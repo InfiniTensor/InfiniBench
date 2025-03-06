@@ -1,0 +1,14 @@
+# config/DeepSeek/DeepSeek-R1-Distill-8B.yaml
+model:
+  class_path: "src.models.DeepSeek.model.DeepSeekR1Distill8B"
+  config_path: "src/models/DeepSeek/config.json"
+    
+weights:
+  base_path: "src/weights/DeepSeek/DeepSeek-R1-Distill-8B"
+  files: 
+    - "/model-00001-of-00002.safetensors"
+    - "/model-00002-of-00002.safetensors"
+
+tokenizer:
+  path: "src/tokenizer/Llama/Llama3"
+  # path: "src/tokenizer/DeepSeek/DeepSeek-R1-Distill-8B"

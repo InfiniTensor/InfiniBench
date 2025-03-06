@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "InfiniBench"
+version = "0.1.0"
+description = "Universal AI Model Benchmark Toolkit"
+requires-python = ">=3.8"
+dependencies = [
+    "torch>=2.0",
+    "safetensors>=0.4.0",
+    "pyyaml>=6.0",
+    "tomli>=2.0.1; python_version < '3.11'"
+]
+readme = "README.md"
+
+[project.scripts]
+InfiniBench = "src.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["*"]
+
+[tool.setuptools.package-data]
+"InfiniBench.config" = ["**/*.yaml"]
