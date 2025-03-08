@@ -1,8 +1,10 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
-from src.toolkit.utils import rotate_half, apply_rotary_pos_emb
+
+from src.toolkit.utils import apply_rotary_pos_emb
 
 
 class RMSNorm(nn.Module):
@@ -17,7 +19,7 @@ class RMSNorm(nn.Module):
     def forward(self, x):
         output = self._norm(x.float()).type_as(x)
         return output * self.weight
-    
+
 
 class RotaryPositionalEmbedding(nn.Module):
     def __init__(self, dim, max_seq_len=8192, theta=500000.0, scaling_factor=8.0):
@@ -34,7 +36,10 @@ class RotaryPositionalEmbedding(nn.Module):
     def _update_cos_sin_cache(self, seq_len):
         required_len = max(seq_len, self.max_seq_len)
         if self.cos_cached is None or required_len > self.cos_cached.shape[1]:
-            t = torch.arange(required_len, device=self.inv_freq.device) / self.scaling_factor
+            t = (
+                torch.arange(required_len, device=self.inv_freq.device)
+                / self.scaling_factor
+            )
             freqs = torch.outer(t, self.inv_freq)
             emb = torch.cat((freqs, freqs), dim=-1)
             self.register_buffer("cos_cached", emb.cos()[None, :, None, :])
@@ -61,11 +66,13 @@ class GroupedQueryAttention(nn.Module):
         self.k_proj = nn.Linear(embed_size, self.head_dim * num_kv_heads, bias=False)
         self.v_proj = nn.Linear(embed_size, self.head_dim * num_kv_heads, bias=False)
         self.o_proj = nn.Linear(embed_size, embed_size, bias=False)
-        self.rotary = RotaryPositionalEmbedding(self.head_dim, theta=10000.0, scaling_factor=1.0)
+        self.rotary = RotaryPositionalEmbedding(
+            self.head_dim, theta=10000.0, scaling_factor=1.0
+        )
 
     def forward(self, x, mask=None):
         batch_size, seq_len, _ = x.shape
-        
+
         Q = self.q_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
         K = self.k_proj(x).view(batch_size, seq_len, self.num_kv_heads, self.head_dim)
         V = self.v_proj(x).view(batch_size, seq_len, self.num_kv_heads, self.head_dim)
@@ -102,4 +109,3 @@ class SwiGLU(nn.Module):
 
     def forward(self, x):
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
-
