@@ -1,6 +1,6 @@
 # Development Guide
 
-This guide explains how to set up the development environment and extend InfiniMetrics by adding new adapters and metrics.
+This guide explains how to set up the development environment and extend InfiniBench by adding new adapters and metrics.
 
 ## Development Setup
 
@@ -51,7 +51,7 @@ git commit -m "your message" --no-verify
 Create a new adapter class by inheriting from `BaseAdapter`:
 
 ```python
-from infinimetrics.adapter import BaseAdapter
+from infinibench.adapter import BaseAdapter
 
 class MyCustomAdapter(BaseAdapter):
     def __init__(self, config):
@@ -120,7 +120,7 @@ python main.py my_test_config.json
 
 ### Define Metric Class
 
-In `infinimetrics/common/metrics.py`:
+In `infinibench/common/metrics.py`:
 
 ```python
 class CustomMetric(Metric):
@@ -184,7 +184,7 @@ def process(self, test_input):
 ### Directory Structure
 
 ```
-infinimetrics/
+infinibench/
 ├── hardware/       # Hardware test adapters
 ├── operators/      # Operator test adapters
 ├── inference/      # Inference test adapters

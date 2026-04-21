@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-This guide will help you get up and running with InfiniMetrics in minutes.
+This guide will help you get up and running with InfiniBench in minutes.
 
 ## Prerequisites
 
@@ -14,8 +14,8 @@ Before you begin, ensure you have:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/InfiniTensor/InfiniMetrics.git
-cd InfiniMetrics
+git clone https://github.com/InfiniTensor/InfiniBench.git
+cd InfiniBench
 ```
 
 ### 2. Initialize Submodules
@@ -39,7 +39,7 @@ pip install vllm
 If you plan to run hardware tests:
 
 ```bash
-cd infinimetrics/hardware/cuda-memory-benchmark
+cd infinibench/hardware/cuda-memory-benchmark
 bash build.sh
 ```
 
@@ -63,7 +63,7 @@ This will test:
 Run an inference benchmark:
 
 ```bash
-cd infinimetrics/inference
+cd infinibench/inference
 python infer_main.py --config config.json
 ```
 
@@ -99,7 +99,7 @@ Results are saved in:
 
 ## MongoDB Integration (Optional)
 
-InfiniMetrics supports storing test results in MongoDB for persistent storage and dashboard visualization.
+InfiniBench supports storing test results in MongoDB for persistent storage and dashboard visualization.
 
 ### Prerequisites
 
@@ -146,7 +146,7 @@ watcher.run_forever()  # Blocks until Ctrl+C
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MONGO_URI` | `mongodb://localhost:27017` | MongoDB connection URL |
-| `MONGO_DB_NAME` | `infinimetrics` | Database name |
+| `MONGO_DB_NAME` | `infinibench` | Database name |
 | `MONGO_COLLECTION` | `test_runs` | Test results collection |
 
 ## Next Steps

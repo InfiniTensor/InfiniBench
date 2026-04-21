@@ -1,6 +1,6 @@
 # 开发指南
 
-本指南解释如何通过添加新适配器和指标来扩展 InfiniMetrics。
+本指南解释如何通过添加新适配器和指标来扩展 InfiniBench。
 
 ## 添加新适配器
 
@@ -9,7 +9,7 @@
 通过继承 `BaseAdapter` 创建新适配器类：
 
 ```python
-from infinimetrics.adapter import BaseAdapter
+from infinibench.adapter import BaseAdapter
 
 class MyCustomAdapter(BaseAdapter):
     def __init__(self, config):
@@ -78,7 +78,7 @@ python main.py my_test_config.json
 
 ### 定义指标类
 
-在 `infinimetrics/common/metrics.py` 中：
+在 `infinibench/common/metrics.py` 中：
 
 ```python
 class CustomMetric(Metric):
@@ -141,7 +141,7 @@ def process(self, test_input):
 ### 目录结构
 
 ```
-infinimetrics/
+infinibench/
 ├── hardware/       # 硬件测试适配器
 ├── operators/      # 算子测试适配器
 ├── inference/      # 推理测试适配器

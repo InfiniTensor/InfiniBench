@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Data source implementations for InfiniMetrics dashboard."""
+"""Data source implementations for InfiniBench dashboard."""
 
 import json
 import logging

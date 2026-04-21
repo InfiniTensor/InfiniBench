@@ -1,6 +1,6 @@
 # Testing Scripts
 
-Unified test execution scripts for InfiniMetrics.
+Unified test execution scripts for InfiniBench.
 
 ## Quick Start
 

@@ -1,13 +1,13 @@
 # Project Architecture
 
-This document describes the architecture and organization of the InfiniMetrics framework.
+This document describes the architecture and organization of the InfiniBench framework.
 
 ## Directory Structure
 
 ```
-InfiniMetrics/
+InfiniBench/
 ├── main.py                         # Main entry point
-├── infinimetrics/
+├── infinibench/
 │   ├── adapter.py                  # Base adapter interface
 │   ├── dispatcher.py               # Test orchestration
 │   ├── executor.py                 # Universal test executor
@@ -52,7 +52,7 @@ InfiniMetrics/
 
 ```mermaid
 flowchart TB
-    subgraph InfiniMetrics["InfiniMetrics"]
+    subgraph InfiniBench["InfiniBench"]
         Input[Input Files] --> Dispatcher[Dispatcher]
         Dispatcher --> Executor[Executor]
         Executor --> AdapterRegistry["Adapter Registry"]

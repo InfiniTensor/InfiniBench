@@ -1,13 +1,13 @@
 <div align="center">
 
-# InfiniMetrics
+# InfiniBench
 
 **An InfiniTensor-Featured Comprehensive Accelerator Evaluation Framework**
 
-[![Format Check](https://img.shields.io/badge/Format_Check-passing-success)](https://github.com/InfiniTensor/InfiniMetrics)
-[![Issues](https://img.shields.io/github/issues/InfiniTensor/InfiniMetrics)](https://github.com/InfiniTensor/InfiniMetrics/issues)
-[![Pull Requests](https://img.shields.io/github/issues-pr/InfiniTensor/InfiniMetrics)](https://github.com/InfiniTensor/InfiniMetrics/pulls)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/InfiniTensor/InfiniMetrics/blob/master/LICENSE)
+[![Format Check](https://img.shields.io/badge/Format_Check-passing-success)](https://github.com/InfiniTensor/InfiniBench)
+[![Issues](https://img.shields.io/github/issues/InfiniTensor/InfiniBench)](https://github.com/InfiniTensor/InfiniBench/issues)
+[![Pull Requests](https://img.shields.io/github/issues-pr/InfiniTensor/InfiniBench)](https://github.com/InfiniTensor/InfiniBench/pulls)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/InfiniTensor/InfiniBench/blob/master/LICENSE)
 
 A unified, modular testing framework for comprehensive performance evaluation of accelerator hardware and software stacks.
 
@@ -17,7 +17,7 @@ A unified, modular testing framework for comprehensive performance evaluation of
 
 ## 🎯 Overview
 
-**InfiniMetrics** provides standardized interfaces for benchmarking across multiple layers:
+**InfiniBench** provides standardized interfaces for benchmarking across multiple layers:
 
 - **Hardware-Level**: GPU memory bandwidth, cache performance, compute capabilities
 - **Operator-Level**: Individual operation performance (FLOPS, latency)

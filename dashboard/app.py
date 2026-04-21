@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Main Streamlit application for InfiniMetrics dashboard."""
+"""Main Streamlit application for InfiniBench dashboard."""
 
 import streamlit as st
 import pandas as pd
@@ -8,19 +8,19 @@ from pathlib import Path
 import sys
 from datetime import datetime
 from typing import Optional
-from infinimetrics.common.constants import AcceleratorType
+from infinibench.common.constants import AcceleratorType
 
 # Add project root to path
 project_root = Path(__file__).parent
 sys.path.append(str(project_root))
 
 from components.header import render_header
-from utils.data_loader import InfiniMetricsDataLoader
+from utils.data_loader import InfiniBenchDataLoader
 from common import show_data_source_info
 
 # Page configuration
 st.set_page_config(
-    page_title="InfiniMetrics Dashboard",
+    page_title="InfiniBench Dashboard",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -28,7 +28,7 @@ st.set_page_config(
 
 # Initialize session state
 if "data_loader" not in st.session_state:
-    st.session_state.data_loader = InfiniMetricsDataLoader()
+    st.session_state.data_loader = InfiniBenchDataLoader()
 if "selected_accelerators" not in st.session_state:
     st.session_state.selected_accelerators = []
 if "use_mongodb" not in st.session_state:
@@ -69,11 +69,11 @@ def main():
         if use_mongodb != st.session_state.use_mongodb:
             st.session_state.use_mongodb = use_mongodb
             if use_mongodb:
-                st.session_state.data_loader = InfiniMetricsDataLoader(
+                st.session_state.data_loader = InfiniBenchDataLoader(
                     use_mongodb=True, fallback_to_files=True
                 )
             else:
-                st.session_state.data_loader = InfiniMetricsDataLoader()
+                st.session_state.data_loader = InfiniBenchDataLoader()
 
         show_data_source_info(style="sidebar")
         st.markdown("---")
@@ -85,7 +85,7 @@ def main():
         if not use_mongodb and results_dir != str(
             st.session_state.data_loader.results_dir
         ):
-            st.session_state.data_loader = InfiniMetricsDataLoader(results_dir)
+            st.session_state.data_loader = InfiniBenchDataLoader(results_dir)
 
         auto_refresh = st.toggle("自动刷新", value=False)
         if auto_refresh:
@@ -136,7 +136,7 @@ def render_dashboard(run_id_filter: str):
             font-size: 1.3em;
             line-height: 1.6;
         ">
-            <strong>InfiniMetrics Dashboard</strong> 用于统一展示
+            <strong>InfiniBench Dashboard</strong> 用于统一展示
             <strong>通信（NCCL / 集合通信）</strong>、
             <strong>训练（Training / 分布式训练）</strong>、
             <strong>推理（直接推理 / 服务性能）</strong>、

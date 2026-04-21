@@ -123,7 +123,7 @@ check_all_deps() {
 # ========================================
 main() {
     echo "=========================================="
-    echo "InfiniMetrics Test Runner"
+    echo "InfiniBench Test Runner"
     echo "=========================================="
     echo ""
 
@@ -143,8 +143,8 @@ main() {
     echo ""
 
     # Run tests
-    log_test_start "InfiniMetrics"
-    trap 'cleanup_on_error "InfiniMetrics"' ERR
+    log_test_start "InfiniBench"
+    trap 'cleanup_on_error "InfiniBench"' ERR
 
     echo "Running ${#INPUT_PATHS[@]} input path(s):"
     for path in "${INPUT_PATHS[@]}"; do
@@ -155,7 +155,7 @@ main() {
     # Execute main.py
     python main.py "${INPUT_PATHS[@]}" --output "./output/"
 
-    log_test_end "InfiniMetrics" $?
+    log_test_end "InfiniBench" $?
 }
 
 main "$@"

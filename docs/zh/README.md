@@ -1,6 +1,6 @@
-# InfiniMetrics 文档
+# InfiniBench 文档
 
-欢迎来到 InfiniMetrics 文档中心。本页面提供对所有文档资源的快速访问。
+欢迎来到 InfiniBench 文档中心。本页面提供对所有文档资源的快速访问。
 
 ## 快速导航
 
@@ -27,4 +27,4 @@
 
 ---
 
-如有问题或需要支持，请访问 [InfiniTensor GitHub 仓库](https://github.com/InfiniTensor/InfiniMetrics)。
+如有问题或需要支持，请访问 [InfiniTensor GitHub 仓库](https://github.com/InfiniTensor/InfiniBench)。

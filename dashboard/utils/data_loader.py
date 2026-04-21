@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unified data loader for InfiniMetrics dashboard."""
+"""Unified data loader for InfiniBench dashboard."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from .data_utils import extract_accelerator_types, extract_run_info, get_friendl
 logger = logging.getLogger(__name__)
 
 
-class InfiniMetricsDataLoader:
+class InfiniBenchDataLoader:
     """
     Unified data loader supporting multiple sources.
 
@@ -237,7 +237,7 @@ from .data_utils import (
 )
 
 __all__ = [
-    "InfiniMetricsDataLoader",
+    "InfiniBenchDataLoader",
     "DataSource",
     "FileDataSource",
     "get_friendly_size",

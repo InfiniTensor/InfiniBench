@@ -11,7 +11,7 @@ from utils.visualizations import (
     create_summary_table_infer,
 )
 
-init_page("推理测试分析 | InfiniMetrics", "🚀")
+init_page("推理测试分析 | InfiniBench", "🚀")
 
 
 def main():

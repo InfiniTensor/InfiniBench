@@ -1,13 +1,13 @@
 # 项目架构
 
-本文档描述 InfiniMetrics 框架的架构和组织。
+本文档描述 InfiniBench 框架的架构和组织。
 
 ## 目录结构
 
 ```
-InfiniMetrics/
+InfiniBench/
 ├── main.py                          # 主入口文件
-├── infinimetrics/
+├── infinibench/
 │   ├── adapter.py                  # 基础适配器接口
 │   ├── dispatcher.py               # 测试编排调度器
 │   ├── executor.py                 # 通用测试执行器
@@ -55,7 +55,7 @@ InfiniMetrics/
 
 ```mermaid
 flowchart TB
-    subgraph InfiniMetrics["InfiniMetrics"]
+    subgraph InfiniBench["InfiniBench"]
         Input[输入文件] --> Dispatcher[调度器]
         Dispatcher --> Executor[执行器]
         Executor --> AdapterRegistry["适配器注册表"]

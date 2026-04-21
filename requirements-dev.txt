@@ -1,4 +1,4 @@
-# Development dependencies for InfiniMetrics
+# Development dependencies for InfiniBench
 # Install with: pip install -r requirements-dev.txt
 
 # ============================================================

@@ -1,7 +1,7 @@
-# InfiniMetrics Dashboard User Guide
+# InfiniBench Dashboard User Guide
 ## 1. Dashboard Overview
 
-InfiniMetrics Dashboard provides a unified interface to visualize benchmark and evaluation results of AI accelerators across the following scenarios:
+InfiniBench Dashboard provides a unified interface to visualize benchmark and evaluation results of AI accelerators across the following scenarios:
 
 - Communication (NCCL / Collective Communication)
 

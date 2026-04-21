@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MongoDB connection management for InfiniMetrics."""
+"""MongoDB connection management for InfiniBench."""
 
 import logging
 from typing import Optional

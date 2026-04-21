@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-InfiniMetrics MongoDB integration module.
+InfiniBench MongoDB integration module.
 
 This module provides:
 - MongoDB connection management (client.py)
