@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MongoDB configuration for InfiniMetrics."""
+"""MongoDB configuration for InfiniBench."""
 
 from dataclasses import dataclass
 import os
@@ -10,7 +10,7 @@ class DatabaseConfig:
     """MongoDB configuration settings."""
 
     mongo_uri: str = "mongodb://localhost:27017"
-    database_name: str = "infinimetrics"
+    database_name: str = "infinibench"
     collection_name: str = "test_runs"
     summary_collection_name: str = "dispatcher_summaries"
     connection_timeout_ms: int = 5000
@@ -21,7 +21,7 @@ class DatabaseConfig:
         """Load configuration from environment variables."""
         return cls(
             mongo_uri=os.getenv("MONGO_URI", "mongodb://localhost:27017"),
-            database_name=os.getenv("MONGO_DB_NAME", "infinimetrics"),
+            database_name=os.getenv("MONGO_DB_NAME", "infinibench"),
             collection_name=os.getenv("MONGO_COLLECTION", "test_runs"),
             summary_collection_name=os.getenv(
                 "MONGO_SUMMARY_COLLECTION", "dispatcher_summaries"

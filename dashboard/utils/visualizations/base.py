@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Visualization functions for InfiniMetrics dashboard."""
+"""Visualization functions for InfiniBench dashboard."""
 
 import plotly.graph_objects as go
 import pandas as pd

@@ -12,7 +12,7 @@ from utils.visualizations import (
     plot_hw_cache,
 )
 
-init_page("硬件测试分析 | InfiniMetrics", "🔧")
+init_page("硬件测试分析 | InfiniBench", "🔧")
 
 
 def main():

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Main entry point for InfiniMetrics test framework."""
+"""Main entry point for InfiniBench test framework."""
 
 import sys
 import logging
 import argparse
 from typing import List, Dict, Any
 
-from infinimetrics.dispatcher import Dispatcher
-from infinimetrics.utils import load_inputs_from_paths
+from infinibench.dispatcher import Dispatcher
+from infinibench.utils import load_inputs_from_paths
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -57,7 +57,7 @@ def print_summary(results: Dict[str, Any]) -> None:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="InfiniMetrics - Test Orchestration Framework",
+        description="InfiniBench - Test Orchestration Framework",
         epilog="Examples:\n  python main.py input.json\n  python main.py /path/to/inputs/\n  python main.py input.json --output ./results",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

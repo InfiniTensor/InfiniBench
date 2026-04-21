@@ -12,7 +12,7 @@ from utils.visualizations import (
     render_operator_performance_charts,
 )
 
-init_page("算子测试分析 | InfiniMetrics", "⚡")
+init_page("算子测试分析 | InfiniBench", "⚡")
 
 
 def main():

@@ -1,6 +1,6 @@
-# InfiniMetrics Documentation
+# InfiniBench Documentation
 
-Welcome to the InfiniMetrics documentation. This hub provides quick access to all documentation resources.
+Welcome to the InfiniBench documentation. This hub provides quick access to all documentation resources.
 
 ## Quick Navigation
 
@@ -27,4 +27,4 @@ Welcome to the InfiniMetrics documentation. This hub provides quick access to al
 
 ---
 
-For questions or support, please visit the [InfiniTensor GitHub repository](https://github.com/InfiniTensor/InfiniMetrics).
+For questions or support, please visit the [InfiniTensor GitHub repository](https://github.com/InfiniTensor/InfiniBench).

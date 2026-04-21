@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Header component for InfiniMetrics dashboard."""
+"""Header component for InfiniBench dashboard."""
 
 import streamlit as st
 
@@ -28,7 +28,7 @@ def render_header():
     )
 
     st.markdown(
-        '<div class="main-header">🏭 InfiniMetrics 测试结果展示平台</div>',
+        '<div class="main-header">🏭 InfiniBench 测试结果展示平台</div>',
         unsafe_allow_html=True,
     )
     st.markdown(

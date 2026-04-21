@@ -19,7 +19,7 @@ from utils.visualizations import (
     render_config_details,
 )
 
-init_page("训练测试分析 | InfiniMetrics", "🏋️")
+init_page("训练测试分析 | InfiniBench", "🏋️")
 
 
 def main():

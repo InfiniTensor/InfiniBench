@@ -1,6 +1,6 @@
 # 快速开始指南
 
-本指南将帮助您在几分钟内开始使用 InfiniMetrics。
+本指南将帮助您在几分钟内开始使用 InfiniBench。
 
 ## 前提条件
 
@@ -14,8 +14,8 @@
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/InfiniTensor/InfiniMetrics.git
-cd InfiniMetrics
+git clone https://github.com/InfiniTensor/InfiniBench.git
+cd InfiniBench
 ```
 
 ### 2. 初始化子模块
@@ -39,7 +39,7 @@ pip install vllm
 如果您计划运行硬件测试：
 
 ```bash
-cd infinimetrics/hardware/cuda-memory-benchmark
+cd infinibench/hardware/cuda-memory-benchmark
 bash build.sh
 ```
 
@@ -63,7 +63,7 @@ python main.py format_input_comprehensive_hardware.json
 运行推理基准测试：
 
 ```bash
-cd infinimetrics/inference
+cd infinibench/inference
 python infer_main.py --config config.json
 ```
 

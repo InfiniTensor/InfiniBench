@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hardware-specific visualization functions for InfiniMetrics dashboard."""
+"""Hardware-specific visualization functions for InfiniBench dashboard."""
 
 import plotly.graph_objects as go
 import pandas as pd

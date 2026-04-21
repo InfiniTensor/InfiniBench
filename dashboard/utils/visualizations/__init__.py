@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Visualization functions for InfiniMetrics dashboard.
+"""Visualization functions for InfiniBench dashboard.
 
 This package provides visualization utilities organized by test type:
 - base: Common/legacy visualization functions

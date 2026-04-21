@@ -1,8 +1,8 @@
-# InfiniMetrics Dashboard 使用指南
+# InfiniBench Dashboard 使用指南
 
 ## 1. Dashboard 简介
 
-InfiniMetrics Dashboard 用于统一展示 AI 加速卡在以下场景下的测试与评测结果
+InfiniBench Dashboard 用于统一展示 AI 加速卡在以下场景下的测试与评测结果
 
 - 通信（NCCL / 集合通信）
 - 训练（Training / 分布式训练）

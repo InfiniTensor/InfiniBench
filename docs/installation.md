@@ -1,6 +1,6 @@
 # Installation Guide
 
-This guide covers the installation and setup of InfiniMetrics.
+This guide covers the installation and setup of InfiniBench.
 
 ## Prerequisites
 
@@ -30,12 +30,12 @@ pip install pandas
 If you plan to use the hardware testing modules, you need to build the CUDA memory benchmark suite:
 
 ```bash
-cd infinimetrics/hardware/cuda-memory-benchmark
+cd infinibench/hardware/cuda-memory-benchmark
 bash build.sh --platform cuda
 ```
 
 For MetaX, Iluvatar, Hygon, and Moore Threads build and runtime instructions,
-see [Hardware Benchmarks](../infinimetrics/hardware/README.md).
+see [Hardware Benchmarks](../infinibench/hardware/README.md).
 
 **Note**: This requires:
 - CUDA toolkit (compatible with your GPU driver)

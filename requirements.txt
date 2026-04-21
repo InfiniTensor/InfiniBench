@@ -1,11 +1,11 @@
 # Core dependencies (none required for basic usage)
 
 # Optional: MongoDB support
-# pip install infinimetrics[mongodb]
+# pip install infinibench[mongodb]
 pymongo>=4.0.0
 
 # Optional: Dashboard support
-# pip install infinimetrics[dashboard]
+# pip install infinibench[dashboard]
 streamlit>=1.28.0
 plotly>=5.0.0
 pandas>=2.0.0

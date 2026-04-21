@@ -27,9 +27,9 @@ def init_page(page_title: str, page_icon: str):
 
     # Initialize DataLoader (respect MongoDB setting)
     if "data_loader" not in st.session_state:
-        from utils.data_loader import InfiniMetricsDataLoader
+        from utils.data_loader import InfiniBenchDataLoader
 
-        st.session_state.data_loader = InfiniMetricsDataLoader(
+        st.session_state.data_loader = InfiniBenchDataLoader(
             use_mongodb=st.session_state.use_mongodb,
             fallback_to_files=True,
         )

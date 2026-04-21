@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "infinimetrics"
+name = "infinibench"
 version = "0.1.0"
 description = "An InfiniTensor-featured comprehensive accelerator evaluation framework"
 dependencies = []
@@ -32,7 +32,7 @@ exclude = '''
 '''
 
 [tool.setuptools.packages.find]
-include = ["infinimetrics*", "dashboard*", "db*"]
+include = ["infinibench*", "dashboard*", "db*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

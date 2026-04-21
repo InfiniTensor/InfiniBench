@@ -1,13 +1,13 @@
-# InfiniMetrics
+# InfiniBench
 
 <div align="center">
 
 **面向 InfiniTensor 的全面加速器评估框架**
 
-[![Format Check](https://img.shields.io/badge/Format_Check-passing-success)](https://github.com/InfiniTensor/InfiniMetrics)
-[![Issues](https://img.shields.io/github/issues/InfiniTensor/InfiniMetrics)](https://github.com/InfiniTensor/InfiniMetrics/issues)
-[![Pull Requests](https://img.shields.io/github/issues-pr/InfiniTensor/InfiniMetrics)](https://github.com/InfiniTensor/InfiniMetrics/pulls)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/InfiniTensor/InfiniMetrics/blob/master/LICENSE)
+[![Format Check](https://img.shields.io/badge/Format_Check-passing-success)](https://github.com/InfiniTensor/InfiniBench)
+[![Issues](https://img.shields.io/github/issues/InfiniTensor/InfiniBench)](https://github.com/InfiniTensor/InfiniBench/issues)
+[![Pull Requests](https://img.shields.io/github/issues-pr/InfiniTensor/InfiniBench)](https://github.com/InfiniTensor/InfiniBench/pulls)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/InfiniTensor/InfiniBench/blob/master/LICENSE)
 
 一个统一、模块化的测试框架，专为加速卡和软件栈的全面性能评估而设计。
 
@@ -17,7 +17,7 @@
 
 ## 🎯 项目概述
 
-**InfiniMetrics** 提供了标准化的接口，用于在多个层次进行基准测试：
+**InfiniBench** 提供了标准化的接口，用于在多个层次进行基准测试：
 
 - **硬件层**：GPU 内存带宽、缓存性能、计算能力
 - **算子层**：单个操作的性能（FLOPS、延迟）

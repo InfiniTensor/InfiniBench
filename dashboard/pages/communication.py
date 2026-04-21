@@ -17,7 +17,7 @@ from utils.visualizations import (
     create_summary_table_comm,
 )
 
-init_page("通信测试分析 | InfiniMetrics", "🔗")
+init_page("通信测试分析 | InfiniBench", "🔗")
 
 
 def main():

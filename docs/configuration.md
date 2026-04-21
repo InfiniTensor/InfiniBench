@@ -1,6 +1,6 @@
 # Configuration Guide
 
-This guide explains how to configure and run tests in InfiniMetrics.
+This guide explains how to configure and run tests in InfiniBench.
 
 ## Input File Format
 

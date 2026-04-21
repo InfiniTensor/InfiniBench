@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Data utility functions for InfiniMetrics dashboard."""
+"""Data utility functions for InfiniBench dashboard."""
 import json
 import logging
 

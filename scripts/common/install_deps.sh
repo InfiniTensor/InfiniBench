@@ -1,5 +1,5 @@
 #!/bin/bash
-# Unified dependency management script for InfiniMetrics
+# Unified dependency management script for InfiniBench
 # Usage: ./scripts/common/install_deps.sh [component]
 #
 # Components:
@@ -201,10 +201,10 @@ install_hardware() {
     local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     # Find project root by going up until we find the marker directory
     local PROJECT_ROOT="$SCRIPT_DIR"
-    while [[ "$PROJECT_ROOT" != "/" && ! -d "$PROJECT_ROOT/infinimetrics" ]]; do
+    while [[ "$PROJECT_ROOT" != "/" && ! -d "$PROJECT_ROOT/infinibench" ]]; do
         PROJECT_ROOT="$(dirname "$PROJECT_ROOT")"
     done
-    local BENCHMARK_PATH="$PROJECT_ROOT/infinimetrics/hardware/cuda-memory-benchmark"
+    local BENCHMARK_PATH="$PROJECT_ROOT/infinibench/hardware/cuda-memory-benchmark"
 
     # 2. Check if already built
     echo -e "${BLUE}Checking CUDA memory benchmark...${NC}"
@@ -278,7 +278,7 @@ main() {
     local exit_code=0
 
     echo "=========================================="
-    echo "InfiniMetrics Dependency Manager"
+    echo "InfiniBench Dependency Manager"
     echo "=========================================="
     echo ""
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MongoDB data source for InfiniMetrics dashboard."""
+"""MongoDB data source for InfiniBench dashboard."""
 
 import logging
 import sys
