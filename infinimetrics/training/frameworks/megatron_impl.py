@@ -104,6 +104,8 @@ class MegatronImpl:
         testcase = self.config.get("_testcase", "").lower()
         if "lora" in testcase or self.config.get("use_lora"):
             return "lora"
+        if "finetune" in testcase or self.config.get("use_finetune"):
+            return "finetune"
         if "sft" in testcase or self.config.get("use_sft"):
             return "sft"
         if "pretrain" in testcase:
@@ -320,8 +322,8 @@ class MegatronImpl:
         if self.training_mode == "pretrain":
             return args
 
-        if self.training_mode == "sft":
-            self.logger.info("SFT mode: adding --finetune flag")
+        if self.training_mode in ("sft", "finetune"):
+            self.logger.info(f"{self.training_mode.upper()} mode: adding --finetune flag")
             args.append("--finetune")
 
             pretrained_path = self.train_args.get("pretrained_path")
@@ -329,9 +331,11 @@ class MegatronImpl:
                 args.append(f"--load={pretrained_path}")
                 self.logger.info(f"Loading pretrained weights from {pretrained_path}")
 
-            sft_lr = self.train_args.get("sft_lr")
-            if sft_lr:
-                args.append(f"--lr={sft_lr}")
+            # Use mode-specific LR override if provided
+            mode_lr_key = f"{self.training_mode}_lr"
+            mode_lr = self.train_args.get(mode_lr_key)
+            if mode_lr:
+                args.append(f"--lr={mode_lr}")
 
             return args
 

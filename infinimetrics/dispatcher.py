@@ -23,6 +23,18 @@ _ADAPTER_REGISTRY = {
     (TestCategory.INFER, "vllm"): lambda: _create_inference_adapter(),
     (TestCategory.TRAIN, "megatron"): lambda: _create_training_adapter(),
     (TestCategory.TRAIN, "infinitrain"): lambda: _create_training_adapter(),
+    # New adapters: JC-04 Compatibility
+    (TestCategory.COMPATIBILITY, "cudasamples"): lambda: _create_compatibility_adapter(),
+    (TestCategory.COMPATIBILITY, "megatron"): lambda: _create_compatibility_adapter(),
+    (TestCategory.COMPATIBILITY, "vllm"): lambda: _create_compatibility_adapter(),
+    (TestCategory.COMPATIBILITY, "infinilm"): lambda: _create_compatibility_adapter(),
+    # New adapter: JC-05 Stability
+    (TestCategory.STABILITY, "megatron"): lambda: _create_stability_adapter(),
+    # New adapter: MX-01 Traditional Models
+    (TestCategory.TRADITIONAL, "train"): lambda: _create_traditional_model_adapter(),
+    (TestCategory.TRADITIONAL, "eval"): lambda: _create_traditional_model_adapter(),
+    (TestCategory.TRADITIONAL, "evaluate"): lambda: _create_traditional_model_adapter(),
+    (TestCategory.TRADITIONAL, "inference"): lambda: _create_traditional_model_adapter(),
 }
 
 
@@ -59,6 +71,29 @@ def _create_training_adapter():
     from infinimetrics.training.training_adapter import TrainingAdapter
 
     return TrainingAdapter()
+
+
+def _create_compatibility_adapter():
+    """Create compatibility adapter (lazy import)."""
+    from infinimetrics.compatibility.compatibility_adapter import CompatibilityAdapter
+
+    return CompatibilityAdapter()
+
+
+def _create_stability_adapter():
+    """Create stability adapter (lazy import)."""
+    from infinimetrics.stability.stability_adapter import StabilityAdapter
+
+    return StabilityAdapter()
+
+
+def _create_traditional_model_adapter():
+    """Create traditional model adapter (lazy import)."""
+    from infinimetrics.traditional_models.traditional_model_adapter import (
+        TraditionalModelAdapter,
+    )
+
+    return TraditionalModelAdapter()
 
 
 class Dispatcher:

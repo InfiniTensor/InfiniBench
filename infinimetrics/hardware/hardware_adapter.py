@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Hardware Test Adapter for CUDA Unified Benchmark Suite"""
+"""Hardware Test Adapter for cross-platform bandwidth benchmarks.
+
+Routes to platform-specific implementations:
+- NVIDIA / MetaX / Iluvatar / Hygon / Moore → CudaPlatform
+- Cambricon MLU → CambriconPlatform
+- Ascend NPU → AscendPlatform
+"""
 
 import logging
 import subprocess
@@ -24,13 +30,37 @@ from infinimetrics.common.constants import (
     METRIC_PREFIX_MEM_SWEEP,
     InfiniMetricsJson,
 )
+from infinimetrics.hardware.platforms import create_platform_handler
 from infinimetrics.utils.time_utils import get_timestamp
 
 logger = logging.getLogger(__name__)
 
+# Platform name aliases for routing
+_CUDA_COMPATIBLE_PLATFORMS = {
+    "nvidia", "cuda", "metax", "metax_gpu", "iluvatar", "iluvatar_gpu",
+    "hygon", "sugon_dcu", "moore", "moore_gpu",
+}
+_CAMBRICON_PLATFORMS = {"cambricon", "cambricon_mlu"}
+_ASCEND_PLATFORMS = {"ascend", "ascend_npu"}
+
+
+def _resolve_platform(config: Dict[str, Any]) -> str:
+    """Determine the hardware platform from config.
+
+    Checks in order:
+    1. config["platform"]
+    2. config["gpu_platform"]
+    3. Falls back to "cuda" (CUDA-compatible default)
+    """
+    for key in ("platform", "gpu_platform", "accelerator_type"):
+        val = config.get(key, "").lower().strip()
+        if val:
+            return val
+    return "cuda"
+
 
 class HardwareTestAdapter(BaseAdapter):
-    """Adapter for CUDA Unified hardware performance tests."""
+    """Adapter for hardware performance tests across multiple platforms."""
 
     def __init__(
         self,
@@ -47,17 +77,22 @@ class HardwareTestAdapter(BaseAdapter):
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.build_dir = Path(__file__).parent / "cuda-memory-benchmark"
         self.build_script = self.build_dir / "build.sh"
+        self._platform_handler = None
 
     def setup(self, config: Dict[str, Any]) -> None:
         """Initialize resources before running tests."""
         device = config.get("device", "cuda").lower()
-        if (
-            device == "cpu"
-            or config.get("skip_build", False)
-            or Path(self.cuda_perf_path).exists()
-        ):
+        if device == "cpu":
             return
-        self._build_cuda_project()
+
+        platform_name = _resolve_platform(config)
+        output_dir = Path(config.get("output_dir", "./output")) / "hardware"
+
+        # Create platform handler via registry
+        self._platform_handler = create_platform_handler(
+            platform_name, output_dir, config
+        )
+        self._platform_handler.setup()
 
     def process(self, test_input: Any) -> Dict[str, Any]:
         """Process test input and return results."""
@@ -87,11 +122,25 @@ class HardwareTestAdapter(BaseAdapter):
                 metrics = []
                 command = None
             else:
-                logger.info("GPU mode (device=%s): Executing CUDA tests", device)
-                cmd = self._build_command(config)
-                command = " ".join(cmd)  # Store command as string
-                output = self._execute_test(cmd, test_type)
-                metrics = self._parse_output(output, test_type, run_id)
+                platform_name = _resolve_platform(config)
+                logger.info(
+                    "GPU mode (device=%s, platform=%s): Executing hardware tests",
+                    device,
+                    platform_name,
+                )
+
+                # Ensure platform handler output_dir is up to date
+                if self._platform_handler is not None:
+                    self._platform_handler.output_dir = self.output_dir
+
+                # Recreate platform handler if output_dir changed
+                self._platform_handler = create_platform_handler(
+                    platform_name, self.output_dir, config
+                )
+                self._platform_handler.setup()
+
+                command = self._platform_handler.get_command(config)
+                metrics = self._platform_handler.run_test(test_type, config)
 
             # Add command to config for traceability
             result_config = config.copy()
@@ -117,272 +166,3 @@ class HardwareTestAdapter(BaseAdapter):
                 exc_info=True,
             )
             raise
-
-    def _build_cuda_project(self) -> None:
-        """Build CUDA project if needed."""
-        if not self.build_dir.exists():
-            raise FileNotFoundError(
-                f"CUDA benchmark directory not found: {self.build_dir}"
-            )
-        if not self.build_script.exists():
-            raise FileNotFoundError(f"Build script not found: {self.build_script}")
-        logger.info("Building CUDA project in: %s", self.build_dir)
-        try:
-            result = subprocess.run(
-                ["bash", str(self.build_script)],
-                cwd=str(self.build_dir),
-                capture_output=True,
-                text=True,
-                timeout=300,
-            )
-            if result.returncode != 0:
-                raise RuntimeError(f"Failed to build CUDA project:\n{result.stderr}")
-            logger.info("CUDA project build completed successfully")
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("CUDA project build timed out after 5 minutes")
-
-    def _build_command(self, config: Dict[str, Any]) -> List[str]:
-        """Build command for CUDA test suite."""
-        test_type = config.get("test_type", "all")
-        cuda_test_type = TEST_TYPE_MAP.get(test_type, test_type.lower())
-
-        base_command = [self.cuda_perf_path, f"--{cuda_test_type}"]
-
-        # Use command builder for optional parameters
-        param_mappings = [
-            ("device_id", "--device"),
-            ("iterations", "--iterations"),
-            ("array_size", "--array-size"),
-        ]
-
-        return build_command_from_config(base_command, config, param_mappings)
-
-    def _execute_test(self, cmd: List[str], test_type: str) -> str:
-        """Execute CUDA test and return output."""
-        if not Path(self.cuda_perf_path).exists():
-            raise RuntimeError(f"cuda_perf_suite not found: {self.cuda_perf_path}")
-        logger.info("Executing: %s", " ".join(cmd))
-
-        timeout = (
-            CACHE_TEST_TIMEOUT if test_type.lower() == "cache" else DEFAULT_TEST_TIMEOUT
-        )
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, check=True, timeout=timeout
-        )
-        return result.stdout
-
-    def _parse_output(self, output: str, test_type: str, run_id: str) -> List[Dict]:
-        """Parse test output based on test type."""
-        if test_type == "Comprehensive":
-            return (
-                self._parse_memory_bandwidth(output, run_id, METRIC_PREFIX_MEM_SWEEP)
-                + self._parse_stream_benchmark(output)
-                + self._parse_cache_bandwidth(output, run_id)
-            )
-
-        # Single test type
-        metric_map = {
-            "MemSweep": (METRIC_PREFIX_MEM_SWEEP, self._parse_memory_bandwidth),
-            "Stream": (None, self._parse_stream_benchmark),
-            "Cache": (None, self._parse_cache_bandwidth),
-        }
-
-        if test_type in metric_map:
-            prefix, parser = metric_map[test_type]
-            return parser(output, run_id, prefix) if prefix else parser(output, run_id)
-        return []
-
-    def _parse_memory_bandwidth(
-        self, output: str, run_id: str, metric_prefix: str
-    ) -> List[Dict]:
-        """Parse memory bandwidth test output."""
-        metrics = []
-        is_sweep = "sweep" in metric_prefix
-
-        for direction_label, key in MEMORY_DIRECTIONS:
-            csv_data = self._parse_bandwidth_data(output, direction_label)
-
-            if not csv_data:
-                continue
-
-            metric_name = f"{metric_prefix}_{key}"
-
-            if is_sweep:
-                metrics.append(
-                    self._create_timeseries_metric(
-                        metric_name,
-                        csv_data,
-                        f"mem_sweep_{key}_{run_id}",
-                        MEMORY_CSV_FIELDS,
-                    )
-                )
-            else:
-                max_bw = max(row["bandwidth_gbps"] for row in csv_data)
-                metrics.append(
-                    {
-                        "name": metric_name,
-                        "value": round(max_bw, 2),
-                        "type": "scalar",
-                        "unit": "GB/s",
-                    }
-                )
-
-        return metrics
-
-    def _parse_bandwidth_data(self, output: str, direction: str) -> List[Dict]:
-        """Parse bandwidth data for a specific direction."""
-        csv_data = []
-
-        # Sweep format - match from direction header to next section
-        # The pattern stops at: ==== (next section), Direction:, STREAM:, or end of string
-        sweep_pattern = rf"{direction}.*?Size \(MB\)\s+Time \(ms\)Bandwidth \(GB/s\)\s+CV \(%\)\s*-+\s*(.*?)\s*(?=\n=+|Direction:|STREAM:|\Z)"
-        sweep_match = re.search(sweep_pattern, output, re.DOTALL)
-
-        if sweep_match:
-            data_block = sweep_match.group(1)
-            for line in data_block.strip().split("\n"):
-                line = line.strip()
-                if line and not line.startswith("-"):
-                    result = self._parse_sweep_line(line)
-                    if result:
-                        csv_data.append(result)
-
-        return csv_data
-
-    @staticmethod
-    def _parse_sweep_line(line: str) -> Optional[Dict]:
-        """Parse a line from sweep format output."""
-        parts = line.split()
-        if len(parts) >= 3:
-            try:
-                return {"size_mb": float(parts[0]), "bandwidth_gbps": float(parts[2])}
-            except (ValueError, IndexError):
-                pass
-        return None
-
-    def _create_timeseries_metric(
-        self,
-        name: str,
-        data: List[Dict],
-        base_filename: str,
-        fields: List[str],
-        unit: str = "GB/s",
-    ) -> Dict:
-        """Create a timeseries metric with CSV file."""
-        return create_timeseries_metric(
-            output_dir=self.output_dir,
-            metric_name=name,
-            data=data,
-            base_filename=base_filename,
-            fields=fields,
-            unit=unit,
-        )
-
-    def _parse_stream_benchmark(self, output: str, run_id: str = None) -> List[Dict]:
-        """Parse STREAM benchmark output."""
-        metrics = []
-        for op in STREAM_OPERATIONS:
-            match = re.search(rf"STREAM_{op.capitalize()}\s+(\d+\.\d+)", output)
-            if match:
-                metrics.append(
-                    {
-                        "name": f"hardware.stream_{op}",
-                        "value": float(match.group(1)),
-                        "type": "scalar",
-                        "unit": "GB/s",
-                    }
-                )
-        return metrics
-
-    def _parse_cache_bandwidth(self, output: str, run_id: str) -> List[Dict]:
-        """Parse cache bandwidth sweep test output."""
-        metrics = []
-
-        # Parse L1
-        l1_match = re.search(L1_CACHE_PATTERN, output, re.DOTALL)
-        if l1_match:
-            l1_data = self._parse_cache_lines(l1_match.group(1), cache_level="l1")
-            if l1_data:
-                metrics.append(
-                    self._create_timeseries_metric(
-                        "hardware.gpu_cache_l1",
-                        l1_data,
-                        f"cache_l1_bandwidth_{run_id}",
-                        L1_CACHE_CSV_FIELDS,
-                    )
-                )
-
-        # Parse L2
-        l2_match = re.search(L2_CACHE_PATTERN, output, re.DOTALL)
-        if l2_match:
-            l2_data = self._parse_cache_lines(l2_match.group(1), cache_level="l2")
-            if l2_data:
-                metrics.append(
-                    self._create_timeseries_metric(
-                        "hardware.gpu_cache_l2",
-                        l2_data,
-                        f"cache_l2_bandwidth_{run_id}",
-                        L2_CACHE_CSV_FIELDS,
-                    )
-                )
-
-        return metrics
-
-    def _parse_cache_lines(self, text: str, cache_level: str) -> List[Dict]:
-        """
-        Parse cache metrics from text lines.
-
-        Args:
-            text: Text containing cache data lines
-            cache_level: Either 'l1' or 'l2'
-
-        Returns:
-            List of parsed cache metric dictionaries
-        """
-        csv_data = []
-
-        for line in text.strip().split("\n"):
-            if parsed := self._parse_cache_line(line, cache_level):
-                csv_data.append(parsed)
-
-        return csv_data
-
-    def _parse_cache_line(self, line: str, cache_level: str) -> Optional[Dict]:
-        """
-        Parse a single cache line.
-
-        Args:
-            line: Line of text containing cache metrics
-            cache_level: Either 'l1' or 'l2'
-
-        Returns:
-            Dictionary with parsed metrics or None if parsing fails
-        """
-        parts = line.split()
-
-        if cache_level == "l1" and len(parts) >= 5:
-            try:
-                return {
-                    "data_set": f"{parts[0]} {parts[1]}",
-                    "_sort_key": float(parts[0]),
-                    "exec_time": parts[2],
-                    "spread": parts[3],
-                    "eff_bw": float(parts[4].removesuffix("GB/s")),
-                }
-            except (ValueError, IndexError):
-                pass
-
-        elif cache_level == "l2" and len(parts) >= 7:
-            try:
-                return {
-                    "data_set": f"{parts[0]} {parts[1]}",
-                    "exec_data": f"{parts[2]} {parts[3]}",
-                    "_sort_key": float(parts[2].replace("kB", "")),
-                    "exec_time": parts[4],
-                    "spread": parts[5],
-                    "eff_bw": float(parts[6].removesuffix("GB/s")),
-                }
-            except (ValueError, IndexError):
-                pass
-
-        return None

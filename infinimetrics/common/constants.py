@@ -30,6 +30,9 @@ class TestCategory(str, Enum):
     INFER = "infer"
     COMM = "comm"
     TRAIN = "train"
+    COMPATIBILITY = "compatibility"
+    STABILITY = "stability"
+    TRADITIONAL = "traditional"
 
 
 # Valid test categories (derived from TestCategory enum)
