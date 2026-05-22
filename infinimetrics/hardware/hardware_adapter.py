@@ -4,6 +4,7 @@
 import logging
 import subprocess
 import re
+import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional, List
 
@@ -27,6 +28,15 @@ from infinimetrics.common.constants import (
 from infinimetrics.utils.time_utils import get_timestamp
 
 logger = logging.getLogger(__name__)
+
+
+def detect_platform() -> str:
+    """Detect GPU platform: 'metax' if MACA/cu-bridge is available, else 'cuda'."""
+    maca_path = Path("/opt/maca")
+    cucc_path = maca_path / "tools" / "cu-bridge" / "bin" / "cucc"
+    if cucc_path.exists() or shutil.which("cucc") or shutil.which("mxcc"):
+        return "metax"
+    return "cuda"
 
 
 class HardwareTestAdapter(BaseAdapter):
@@ -126,10 +136,13 @@ class HardwareTestAdapter(BaseAdapter):
             )
         if not self.build_script.exists():
             raise FileNotFoundError(f"Build script not found: {self.build_script}")
-        logger.info("Building CUDA project in: %s", self.build_dir)
+        platform = detect_platform()
+        logger.info(
+            "Building CUDA project in: %s (platform: %s)", self.build_dir, platform
+        )
         try:
             result = subprocess.run(
-                ["bash", str(self.build_script)],
+                ["bash", str(self.build_script), "--platform", platform],
                 cwd=str(self.build_dir),
                 capture_output=True,
                 text=True,
@@ -137,7 +150,9 @@ class HardwareTestAdapter(BaseAdapter):
             )
             if result.returncode != 0:
                 raise RuntimeError(f"Failed to build CUDA project:\n{result.stderr}")
-            logger.info("CUDA project build completed successfully")
+            logger.info(
+                "CUDA project build completed successfully (platform: %s)", platform
+            )
         except subprocess.TimeoutExpired:
             raise RuntimeError("CUDA project build timed out after 5 minutes")
 
