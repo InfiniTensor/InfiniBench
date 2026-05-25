@@ -1,0 +1,60 @@
+cmake_minimum_required(VERSION 3.18)
+project(MluPerfSuite VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# Find NEUWARE / CNToolkit
+if(DEFINED ENV{NEUWARE_HOME})
+    set(NEUWARE_HOME $ENV{NEUWARE_HOME})
+else()
+    set(NEUWARE_HOME "/usr/local/neuware")
+endif()
+message(STATUS "NEUWARE_HOME: ${NEUWARE_HOME}")
+
+# Find cncc compiler (used as C++ compiler for Cambricon)
+find_program(CNCC cncc HINTS ${NEUWARE_HOME}/bin)
+if(NOT CNCC)
+    message(FATAL_ERROR "cncc not found. Set NEUWARE_HOME.")
+endif()
+message(STATUS "Found cncc: ${CNCC}")
+
+# Find CNRT library
+find_library(CNRT_LIB cnrt HINTS ${NEUWARE_HOME}/lib64 ${NEUWARE_HOME}/lib)
+if(NOT CNRT_LIB)
+    message(FATAL_ERROR "libcnrt not found in ${NEUWARE_HOME}")
+endif()
+
+# Find CNRT headers
+find_path(CNRT_INCLUDE_DIR NAMES cnrt.h HINTS ${NEUWARE_HOME}/include)
+if(NOT CNRT_INCLUDE_DIR)
+    message(FATAL_ERROR "cnrt.h not found in ${NEUWARE_HOME}/include")
+endif()
+
+add_executable(mlu_perf_suite src/main.cc)
+target_include_directories(mlu_perf_suite PRIVATE
+    ${CNRT_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_link_libraries(mlu_perf_suite ${CNRT_LIB} pthread)
+
+# Use cncc as compiler
+set_source_files_properties(src/main.cc PROPERTIES LANGUAGE CXX)
+set_target_properties(mlu_perf_suite PROPERTIES
+    CXX_COMPILER_LAUNCHER ${CNCC}
+    RULE_LAUNCH_COMPILE "${CNCC}"
+)
+
+install(TARGETS mlu_perf_suite RUNTIME DESTINATION bin)
+
+message(STATUS "")
+message(STATUS "Configuration Summary:")
+message(STATUS "  Project:    ${PROJECT_NAME} v${PROJECT_VERSION}")
+message(STATUS "  Build:      ${CMAKE_BUILD_TYPE}")
+message(STATUS "  cncc:       ${CNCC}")
+message(STATUS "  CNRT:       ${CNRT_LIB}")
+message(STATUS "")

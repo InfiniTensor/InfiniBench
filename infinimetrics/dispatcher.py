@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 _ADAPTER_REGISTRY = {
     (TestCategory.OPERATOR, "infinicore"): lambda: _create_infinicore_adapter(),
     (TestCategory.HARDWARE, "cudaunified"): lambda: _create_hardware_adapter(),
+    (TestCategory.HARDWARE, "cambricon"): lambda: _create_hardware_adapter(),
     (TestCategory.COMM, "nccltest"): lambda: _create_nccltests_adapter(),
     (TestCategory.INFER, "infinilm"): lambda: _create_inference_adapter(),
     (TestCategory.INFER, "vllm"): lambda: _create_inference_adapter(),

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Hardware Test Adapter for CUDA Unified Benchmark Suite"""
+"""Hardware Test Adapter for Unified Benchmark Suite (CUDA / Cambricon MLU)"""
 
 import logging
 import subprocess
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
 
 from infinimetrics.adapter import BaseAdapter
 from infinimetrics.common.csv_utils import save_csv, create_timeseries_metric
@@ -28,40 +28,49 @@ from infinimetrics.utils.time_utils import get_timestamp
 
 logger = logging.getLogger(__name__)
 
+# Per-device benchmark configuration
+_DEVICE_CONFIGS = {
+    "cuda": {
+        "binary_name": "cuda_perf_suite",
+        "benchmark_subdir": "cuda-memory-benchmark",
+        "build_script": "build.sh",
+        "has_cache_test": True,
+    },
+    "cambricon": {
+        "binary_name": "mlu_perf_suite",
+        "benchmark_subdir": "cambricon-memory-benchmark",
+        "build_script": "build.sh",
+        "has_cache_test": False,
+    },
+}
+
 
 class HardwareTestAdapter(BaseAdapter):
-    """Adapter for CUDA Unified hardware performance tests."""
+    """Adapter for hardware performance tests. Supports CUDA and Cambricon MLU."""
 
     def __init__(
         self,
-        cuda_perf_path: str = None,
+        perf_binary_path: str = None,
         output_dir: str = "./output",
     ):
-        self.cuda_perf_path = cuda_perf_path or str(
-            Path(__file__).parent
-            / "cuda-memory-benchmark"
-            / "build"
-            / "cuda_perf_suite"
-        )
+        self.perf_binary_path = perf_binary_path
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.build_dir = Path(__file__).parent / "cuda-memory-benchmark"
-        self.build_script = self.build_dir / "build.sh"
+        self.hardware_dir = Path(__file__).parent
 
     def setup(self, config: Dict[str, Any]) -> None:
-        """Initialize resources before running tests."""
-        device = config.get("device", "cuda").lower()
+        """Build benchmark binary if not found."""
+        device = self._get_device_type(config)
         if (
             device == "cpu"
             or config.get("skip_build", False)
-            or Path(self.cuda_perf_path).exists()
+            or Path(self._get_binary_path(device)).exists()
         ):
             return
-        self._build_cuda_project()
+        self._build_project(device)
 
     def process(self, test_input: Any) -> Dict[str, Any]:
         """Process test input and return results."""
-        # Normalize test input to dict format
         test_input = self._normalize_test_input(test_input)
         if not test_input:
             raise ValueError(f"Invalid test_input type: {type(test_input)}")
@@ -72,28 +81,24 @@ class HardwareTestAdapter(BaseAdapter):
 
         logger.info(f"HardwareTestAdapter: Processing {testcase}")
 
-        # Put CSV files in hardware/ subdirectory to match JSON location
         self.output_dir = Path(config.get("output_dir", "./output")) / "hardware"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        device = config.get("device", "cuda").lower()
+        device = self._get_device_type(config)
         test_type = config.get("test_type", "comprehensive")
 
         try:
             if device == "cpu":
-                logger.info(
-                    "CPU mode: Skipping hardware tests (not supported on CPU), returning empty results"
-                )
+                logger.info("CPU mode: Skipping hardware tests")
                 metrics = []
                 command = None
             else:
-                logger.info("GPU mode (device=%s): Executing CUDA tests", device)
-                cmd = self._build_command(config)
-                command = " ".join(cmd)  # Store command as string
-                output = self._execute_test(cmd, test_type)
-                metrics = self._parse_output(output, test_type, run_id)
+                logger.info("Device mode (device=%s): Executing tests", device)
+                cmd = self._build_command(config, device)
+                command = " ".join(cmd)
+                output = self._execute_test(cmd, device, test_type)
+                metrics = self._parse_output(output, test_type, run_id, device)
 
-            # Add command to config for traceability
             result_config = config.copy()
             if command:
                 result_config["command"] = command
@@ -108,7 +113,6 @@ class HardwareTestAdapter(BaseAdapter):
             }
 
         except Exception as e:
-            # Log error with context, then re-raise for Executor to handle
             logger.error(
                 f"HardwareTestAdapter: Test failed for {testcase}\n"
                 f"  Device: {device}\n"
@@ -118,94 +122,140 @@ class HardwareTestAdapter(BaseAdapter):
             )
             raise
 
-    def _build_cuda_project(self) -> None:
-        """Build CUDA project if needed."""
-        if not self.build_dir.exists():
-            raise FileNotFoundError(
-                f"CUDA benchmark directory not found: {self.build_dir}"
-            )
-        if not self.build_script.exists():
-            raise FileNotFoundError(f"Build script not found: {self.build_script}")
-        logger.info("Building CUDA project in: %s", self.build_dir)
+    # ------------------------------------------------------------------
+    # Device detection
+    # ------------------------------------------------------------------
+
+    def _get_device_type(self, config: Dict[str, Any]) -> str:
+        """Determine device type from config. Falls back to testcase framework."""
+        device = config.get("device", "").lower()
+        if device in _DEVICE_CONFIGS:
+            return device
+        # Auto-detect from testcase: hardware.cambricon.* → cambricon
+        testcase = config.get("_testcase", "")
+        if "cambricon" in testcase.lower():
+            return "cambricon"
+        if device == "cpu":
+            return "cpu"
+        return "cuda"
+
+    def _get_device_config(self, device: str) -> Dict:
+        cfg = _DEVICE_CONFIGS.get(device)
+        if not cfg:
+            raise ValueError(f"Unknown device type: {device}")
+        return cfg
+
+    def _get_binary_path(self, device: str) -> str:
+        if self.perf_binary_path:
+            return self.perf_binary_path
+        dev_cfg = self._get_device_config(device)
+        return str(
+            self.hardware_dir / dev_cfg["benchmark_subdir"] / "build" / dev_cfg["binary_name"]
+        )
+
+    # ------------------------------------------------------------------
+    # Build
+    # ------------------------------------------------------------------
+
+    def _build_project(self, device: str) -> None:
+        dev_cfg = self._get_device_config(device)
+        build_dir = self.hardware_dir / dev_cfg["benchmark_subdir"]
+        build_script = build_dir / dev_cfg["build_script"]
+
+        if not build_dir.exists():
+            raise FileNotFoundError(f"Benchmark directory not found: {build_dir}")
+        if not build_script.exists():
+            raise FileNotFoundError(f"Build script not found: {build_script}")
+
+        logger.info("Building %s project in: %s", device, build_dir)
         try:
             result = subprocess.run(
-                ["bash", str(self.build_script)],
-                cwd=str(self.build_dir),
+                ["bash", str(build_script)],
+                cwd=str(build_dir),
                 capture_output=True,
                 text=True,
                 timeout=300,
             )
             if result.returncode != 0:
-                raise RuntimeError(f"Failed to build CUDA project:\n{result.stderr}")
-            logger.info("CUDA project build completed successfully")
+                raise RuntimeError(f"Build failed:\n{result.stderr}")
+            logger.info("Build completed successfully")
         except subprocess.TimeoutExpired:
-            raise RuntimeError("CUDA project build timed out after 5 minutes")
+            raise RuntimeError("Build timed out after 5 minutes")
 
-    def _build_command(self, config: Dict[str, Any]) -> List[str]:
-        """Build command for CUDA test suite."""
+    # ------------------------------------------------------------------
+    # Command building & execution
+    # ------------------------------------------------------------------
+
+    def _build_command(self, config: Dict[str, Any], device: str) -> List[str]:
         test_type = config.get("test_type", "all")
-        cuda_test_type = TEST_TYPE_MAP.get(test_type, test_type.lower())
+        cli_flag = TEST_TYPE_MAP.get(test_type, test_type.lower())
 
-        base_command = [self.cuda_perf_path, f"--{cuda_test_type}"]
+        binary = self._get_binary_path(device)
+        base_command = [binary, f"--{cli_flag}"]
 
-        # Use command builder for optional parameters
         param_mappings = [
             ("device_id", "--device"),
             ("iterations", "--iterations"),
             ("array_size", "--array-size"),
         ]
-
         return build_command_from_config(base_command, config, param_mappings)
 
-    def _execute_test(self, cmd: List[str], test_type: str) -> str:
-        """Execute CUDA test and return output."""
-        if not Path(self.cuda_perf_path).exists():
-            raise RuntimeError(f"cuda_perf_suite not found: {self.cuda_perf_path}")
+    def _execute_test(self, cmd: List[str], device: str, test_type: str) -> str:
+        binary = self._get_binary_path(device)
+        if not Path(binary).exists():
+            raise RuntimeError(f"Benchmark binary not found: {binary}")
         logger.info("Executing: %s", " ".join(cmd))
 
-        timeout = (
-            CACHE_TEST_TIMEOUT if test_type.lower() == "cache" else DEFAULT_TEST_TIMEOUT
-        )
+        timeout = CACHE_TEST_TIMEOUT if test_type.lower() == "cache" else DEFAULT_TEST_TIMEOUT
         result = subprocess.run(
             cmd, capture_output=True, text=True, check=True, timeout=timeout
         )
         return result.stdout
 
-    def _parse_output(self, output: str, test_type: str, run_id: str) -> List[Dict]:
-        """Parse test output based on test type."""
-        if test_type == "Comprehensive":
-            return (
-                self._parse_memory_bandwidth(output, run_id, METRIC_PREFIX_MEM_SWEEP)
-                + self._parse_stream_benchmark(output)
-                + self._parse_cache_bandwidth(output, run_id)
-            )
+    # ------------------------------------------------------------------
+    # Output parsing
+    # ------------------------------------------------------------------
 
-        # Single test type
-        metric_map = {
-            "MemSweep": (METRIC_PREFIX_MEM_SWEEP, self._parse_memory_bandwidth),
-            "Stream": (None, self._parse_stream_benchmark),
-            "Cache": (None, self._parse_cache_bandwidth),
+    def _parse_output(
+        self, output: str, test_type: str, run_id: str, device: str
+    ) -> List[Dict]:
+        dev_cfg = self._get_device_config(device)
+        metric_prefix = f"hardware.{device}"
+
+        if test_type == "Comprehensive":
+            parts = [self._parse_memory_bandwidth(output, run_id, metric_prefix)]
+            parts.append(self._parse_stream_benchmark(output, metric_prefix))
+            if dev_cfg["has_cache_test"]:
+                parts.append(self._parse_cache_bandwidth(output, run_id))
+            return [m for part in parts for m in part]
+
+        parsers = {
+            "MemSweep": lambda: self._parse_memory_bandwidth(
+                output, run_id, metric_prefix
+            ),
+            "Stream": lambda: self._parse_stream_benchmark(output, metric_prefix),
+            "Cache": lambda: self._parse_cache_bandwidth(output, run_id)
+            if dev_cfg["has_cache_test"]
+            else [],
         }
 
-        if test_type in metric_map:
-            prefix, parser = metric_map[test_type]
-            return parser(output, run_id, prefix) if prefix else parser(output, run_id)
-        return []
+        parser = parsers.get(test_type)
+        return parser() if parser else []
+
+    # -- Memory bandwidth --
 
     def _parse_memory_bandwidth(
         self, output: str, run_id: str, metric_prefix: str
     ) -> List[Dict]:
-        """Parse memory bandwidth test output."""
         metrics = []
-        is_sweep = "sweep" in metric_prefix
+        is_sweep = "sweep" in metric_prefix or True  # always sweep for now
 
         for direction_label, key in MEMORY_DIRECTIONS:
             csv_data = self._parse_bandwidth_data(output, direction_label)
-
             if not csv_data:
                 continue
 
-            metric_name = f"{metric_prefix}_{key}"
+            metric_name = f"{metric_prefix}.mem_sweep_{key}"
 
             if is_sweep:
                 metrics.append(
@@ -230,63 +280,38 @@ class HardwareTestAdapter(BaseAdapter):
         return metrics
 
     def _parse_bandwidth_data(self, output: str, direction: str) -> List[Dict]:
-        """Parse bandwidth data for a specific direction."""
         csv_data = []
 
-        # Sweep format - match from direction header to next section
-        # The pattern stops at: ==== (next section), Direction:, STREAM:, or end of string
-        sweep_pattern = rf"{direction}.*?Size \(MB\)\s+Time \(ms\)Bandwidth \(GB/s\)\s+CV \(%\)\s*-+\s*(.*?)\s*(?=\n=+|Direction:|STREAM:|\Z)"
-        sweep_match = re.search(sweep_pattern, output, re.DOTALL)
+        # Match from direction header to next section (====, Direction:, STREAM, or end)
+        pattern = rf"{direction}.*?Size \(MB\).*?-+\s*\n(.*?)(?=\n\s*=+|\nDirection:|\nSTREAM|\Z)"
+        match = re.search(pattern, output, re.DOTALL)
 
-        if sweep_match:
-            data_block = sweep_match.group(1)
-            for line in data_block.strip().split("\n"):
+        if match:
+            for line in match.group(1).strip().split("\n"):
                 line = line.strip()
-                if line and not line.startswith("-"):
-                    result = self._parse_sweep_line(line)
-                    if result:
-                        csv_data.append(result)
+                if not line or line.startswith("-") or line.startswith("NOTE"):
+                    continue
+                parts = line.split()
+                if len(parts) >= 3:
+                    try:
+                        csv_data.append(
+                            {"size_mb": float(parts[0]), "bandwidth_gbps": float(parts[2])}
+                        )
+                    except (ValueError, IndexError):
+                        pass
 
         return csv_data
 
-    @staticmethod
-    def _parse_sweep_line(line: str) -> Optional[Dict]:
-        """Parse a line from sweep format output."""
-        parts = line.split()
-        if len(parts) >= 3:
-            try:
-                return {"size_mb": float(parts[0]), "bandwidth_gbps": float(parts[2])}
-            except (ValueError, IndexError):
-                pass
-        return None
+    # -- STREAM --
 
-    def _create_timeseries_metric(
-        self,
-        name: str,
-        data: List[Dict],
-        base_filename: str,
-        fields: List[str],
-        unit: str = "GB/s",
-    ) -> Dict:
-        """Create a timeseries metric with CSV file."""
-        return create_timeseries_metric(
-            output_dir=self.output_dir,
-            metric_name=name,
-            data=data,
-            base_filename=base_filename,
-            fields=fields,
-            unit=unit,
-        )
-
-    def _parse_stream_benchmark(self, output: str, run_id: str = None) -> List[Dict]:
-        """Parse STREAM benchmark output."""
+    def _parse_stream_benchmark(self, output: str, metric_prefix: str) -> List[Dict]:
         metrics = []
         for op in STREAM_OPERATIONS:
             match = re.search(rf"STREAM_{op.capitalize()}\s+(\d+\.\d+)", output)
             if match:
                 metrics.append(
                     {
-                        "name": f"hardware.stream_{op}",
+                        "name": f"{metric_prefix}.stream_{op}",
                         "value": float(match.group(1)),
                         "type": "scalar",
                         "unit": "GB/s",
@@ -294,11 +319,11 @@ class HardwareTestAdapter(BaseAdapter):
                 )
         return metrics
 
+    # -- Cache (CUDA only) --
+
     def _parse_cache_bandwidth(self, output: str, run_id: str) -> List[Dict]:
-        """Parse cache bandwidth sweep test output."""
         metrics = []
 
-        # Parse L1
         l1_match = re.search(L1_CACHE_PATTERN, output, re.DOTALL)
         if l1_match:
             l1_data = self._parse_cache_lines(l1_match.group(1), cache_level="l1")
@@ -312,7 +337,6 @@ class HardwareTestAdapter(BaseAdapter):
                     )
                 )
 
-        # Parse L2
         l2_match = re.search(L2_CACHE_PATTERN, output, re.DOTALL)
         if l2_match:
             l2_data = self._parse_cache_lines(l2_match.group(1), cache_level="l2")
@@ -329,35 +353,13 @@ class HardwareTestAdapter(BaseAdapter):
         return metrics
 
     def _parse_cache_lines(self, text: str, cache_level: str) -> List[Dict]:
-        """
-        Parse cache metrics from text lines.
-
-        Args:
-            text: Text containing cache data lines
-            cache_level: Either 'l1' or 'l2'
-
-        Returns:
-            List of parsed cache metric dictionaries
-        """
         csv_data = []
-
         for line in text.strip().split("\n"):
             if parsed := self._parse_cache_line(line, cache_level):
                 csv_data.append(parsed)
-
         return csv_data
 
     def _parse_cache_line(self, line: str, cache_level: str) -> Optional[Dict]:
-        """
-        Parse a single cache line.
-
-        Args:
-            line: Line of text containing cache metrics
-            cache_level: Either 'l1' or 'l2'
-
-        Returns:
-            Dictionary with parsed metrics or None if parsing fails
-        """
         parts = line.split()
 
         if cache_level == "l1" and len(parts) >= 5:
@@ -386,3 +388,22 @@ class HardwareTestAdapter(BaseAdapter):
                 pass
 
         return None
+
+    # -- Helpers --
+
+    def _create_timeseries_metric(
+        self,
+        name: str,
+        data: List[Dict],
+        base_filename: str,
+        fields: List[str],
+        unit: str = "GB/s",
+    ) -> Dict:
+        return create_timeseries_metric(
+            output_dir=self.output_dir,
+            metric_name=name,
+            data=data,
+            base_filename=base_filename,
+            fields=fields,
+            unit=unit,
+        )
