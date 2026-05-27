@@ -45,6 +45,16 @@ const DETAIL_CHART_LEGEND = {
   textStyle: { fontSize: DETAIL_CHART_AXIS_FONT_SIZE, color: DETAIL_AXIS_TEXT_COLOR },
 }
 
+type NamedChartSeries = { name?: string }
+
+/** 图例与 series 同名同步，避免 setOption 合并或隐藏容器更新后残留旧系列名（如 PyTorch） */
+function detailChartLegend(series: NamedChartSeries[]) {
+  return {
+    ...DETAIL_CHART_LEGEND,
+    data: series.map((s) => s.name).filter((n): n is string => Boolean(n)),
+  }
+}
+
 /** 对比页柱图：略大于默认 grid.left，竖排 Y 轴名与刻度不裁切；勿过大以免左侧留白 */
 const COMPARE_BAR_GRID_LEFT = 30
 
@@ -251,9 +261,29 @@ export function buildOpLineOption(rows: OpRow[], opts?: OpDetailTwinOpts) {
   })
   const shapes = rows.map((r) => r.shape)
   const gridBottom = opts?.gridBottom ?? OP_DETAIL_TWIN_GRID_BOTTOM
+  const series = [
+    {
+      type: 'line' as const,
+      name: 'InfiniCore',
+      data: icSeries,
+      smooth: true,
+      symbolSize: 3,
+      connectNulls: false,
+      lineStyle: { color: DETAIL_CHART_PRIMARY, width: 1 },
+    },
+    {
+      type: 'line' as const,
+      name: 'PyTorch',
+      data: ptSeries,
+      smooth: true,
+      symbolSize: 3,
+      connectNulls: false,
+      lineStyle: { color: DETAIL_CHART_SECONDARY, width: 1 },
+    },
+  ]
   return {
     tooltip: DETAIL_AXIS_TOOLTIP,
-    legend: DETAIL_CHART_LEGEND,
+    legend: detailChartLegend(series),
     grid: { ...DETAIL_BAR_GRID, top: OP_DETAIL_TWIN_GRID_TOP, bottom: gridBottom },
     xAxis: {
       type: 'category' as const,
@@ -267,26 +297,7 @@ export function buildOpLineOption(rows: OpRow[], opts?: OpDetailTwinOpts) {
       min: 0,
       ...DETAIL_VALUE_AXIS_NAME,
     },
-    series: [
-      {
-        type: 'line' as const,
-        name: 'InfiniCore',
-        data: icSeries,
-        smooth: true,
-        symbolSize: 3,
-        connectNulls: false,
-        lineStyle: { color: DETAIL_CHART_PRIMARY, width: 1 },
-      },
-      {
-        type: 'line' as const,
-        name: 'PyTorch',
-        data: ptSeries,
-        smooth: true,
-        symbolSize: 3,
-        connectNulls: false,
-        lineStyle: { color: DETAIL_CHART_SECONDARY, width: 1 },
-      },
-    ],
+    series,
   }
 }
 
@@ -403,9 +414,29 @@ export function buildInferPrefillBarAligned(
   const xUi = compactDetailBarXAxisUi(categories)
   const gridTop = opts?.gridTop ?? DETAIL_DIM_TWIN_BAR_GRID_TOP
   const gridBottom = opts?.gridBottom ?? xUi.gridBottom
+  const series = [
+    {
+      type: 'bar' as const,
+      name: platSeriesName,
+      data: platVals,
+      barMaxWidth: DETAIL_BAR_MAX_WIDTH,
+      itemStyle: { color: DETAIL_CHART_PRIMARY_SOFT, borderRadius: [2, 2, 0, 0] },
+    },
+    ...(opts?.omitTwinBaselineSeries
+      ? []
+      : [
+          {
+            type: 'bar' as const,
+            name: nvSeriesName,
+            data: nvVals,
+            barMaxWidth: DETAIL_BAR_MAX_WIDTH,
+            itemStyle: { color: DETAIL_CHART_SECONDARY_SOFT, borderRadius: [2, 2, 0, 0] },
+          },
+        ]),
+  ]
   return {
     tooltip: DETAIL_AXIS_TOOLTIP,
-    legend: DETAIL_CHART_LEGEND,
+    legend: detailChartLegend(series),
     grid: { ...DETAIL_BAR_GRID, top: gridTop, bottom: gridBottom },
     xAxis: {
       type: 'category' as const,
@@ -414,26 +445,7 @@ export function buildInferPrefillBarAligned(
       boundaryGap: detailBarBoundaryGap(categories.length),
     },
     yAxis: { type: 'value' as const, name: 'tokens/s', ...DETAIL_VALUE_AXIS_NAME },
-    series: [
-      {
-        type: 'bar' as const,
-        name: platSeriesName,
-        data: platVals,
-        barMaxWidth: DETAIL_BAR_MAX_WIDTH,
-        itemStyle: { color: DETAIL_CHART_PRIMARY_SOFT, borderRadius: [2, 2, 0, 0] },
-      },
-      ...(opts?.omitTwinBaselineSeries
-        ? []
-        : [
-            {
-              type: 'bar' as const,
-              name: nvSeriesName,
-              data: nvVals,
-              barMaxWidth: DETAIL_BAR_MAX_WIDTH,
-              itemStyle: { color: DETAIL_CHART_SECONDARY_SOFT, borderRadius: [2, 2, 0, 0] },
-            },
-          ]),
-    ],
+    series,
   }
 }
 
@@ -448,9 +460,29 @@ export function buildInferDecodeBarAligned(
   const xUi = compactDetailBarXAxisUi(categories)
   const gridTop = opts?.gridTop ?? DETAIL_DIM_TWIN_BAR_GRID_TOP
   const gridBottom = opts?.gridBottom ?? xUi.gridBottom
+  const series = [
+    {
+      type: 'bar' as const,
+      name: platSeriesName,
+      data: platVals,
+      barMaxWidth: DETAIL_BAR_MAX_WIDTH,
+      itemStyle: { color: DETAIL_CHART_PRIMARY_SOFT, borderRadius: [2, 2, 0, 0] },
+    },
+    ...(opts?.omitTwinBaselineSeries
+      ? []
+      : [
+          {
+            type: 'bar' as const,
+            name: nvSeriesName,
+            data: nvVals,
+            barMaxWidth: DETAIL_BAR_MAX_WIDTH,
+            itemStyle: { color: DETAIL_CHART_SECONDARY_SOFT, borderRadius: [2, 2, 0, 0] },
+          },
+        ]),
+  ]
   return {
     tooltip: DETAIL_AXIS_TOOLTIP,
-    legend: DETAIL_CHART_LEGEND,
+    legend: detailChartLegend(series),
     grid: { ...DETAIL_BAR_GRID, top: gridTop, bottom: gridBottom },
     xAxis: {
       type: 'category' as const,
@@ -459,26 +491,7 @@ export function buildInferDecodeBarAligned(
       boundaryGap: detailBarBoundaryGap(categories.length),
     },
     yAxis: { type: 'value' as const, name: 'tokens/s', ...DETAIL_VALUE_AXIS_NAME },
-    series: [
-      {
-        type: 'bar' as const,
-        name: platSeriesName,
-        data: platVals,
-        barMaxWidth: DETAIL_BAR_MAX_WIDTH,
-        itemStyle: { color: DETAIL_CHART_PRIMARY_SOFT, borderRadius: [2, 2, 0, 0] },
-      },
-      ...(opts?.omitTwinBaselineSeries
-        ? []
-        : [
-            {
-              type: 'bar' as const,
-              name: nvSeriesName,
-              data: nvVals,
-              barMaxWidth: DETAIL_BAR_MAX_WIDTH,
-              itemStyle: { color: DETAIL_CHART_SECONDARY_SOFT, borderRadius: [2, 2, 0, 0] },
-            },
-          ]),
-    ],
+    series,
   }
 }
 
@@ -607,7 +620,7 @@ export function buildCommBarBw(rows: CommRow[], opts?: DetailDimBarChartOpts) {
     series: [
       {
         type: 'bar' as const,
-        name: '自研带宽 GB/s',
+        name: '带宽 GB/s',
         data: rows.map((r) => r.bw),
         barMaxWidth: DETAIL_BAR_MAX_WIDTH,
         itemStyle: { color: DETAIL_CHART_PRIMARY_SOFT, borderRadius: [2, 2, 0, 0] },
@@ -857,12 +870,20 @@ type CardLite = {
 
 type PlatLite = { key: string; name: string; color: string }
 
-export function buildCompareScoreBar(cards: CardLite[], plats: PlatLite[]) {
+/** 算子：自研相对开源的提速倍率；其余维度：各平台相对 NVIDIA=100 的得分 */
+export type CompareScoreBarMode = 'operator' | 'platformScore'
+
+export function buildCompareScoreBar(
+  cards: CardLite[],
+  plats: PlatLite[],
+  mode: CompareScoreBarMode = 'operator',
+) {
   const categories = plats.map((p) => p.name)
   const xUi = categoryBarXAxisUi(categories)
   const gridBottom = categoryBarLabelsFitHorizontal(categories)
     ? DETAIL_DIM_BAR_GRID_BOTTOM
     : xUi.gridBottom
+  const isOperator = mode === 'operator'
   return {
     tooltip: {
       trigger: 'axis' as const,
@@ -878,7 +899,7 @@ export function buildCompareScoreBar(cards: CardLite[], plats: PlatLite[]) {
     },
     yAxis: {
       type: 'value' as const,
-      name: '提速倍率（×）',
+      name: isOperator ? '提速倍率（×）' : '相对NVIDIA得分',
       nameLocation: 'middle' as const,
       nameRotate: 90,
       nameGap: COMPARE_Y_NAME_GAP_SCORE,
@@ -889,7 +910,7 @@ export function buildCompareScoreBar(cards: CardLite[], plats: PlatLite[]) {
       min: 0,
       axisLabel: {
         fontSize: DETAIL_CHART_AXIS_FONT_SIZE,
-        formatter: (v: number) => v + '×',
+        formatter: isOperator ? (v: number) => v + '×' : undefined,
         color: DETAIL_AXIS_TEXT_COLOR,
       },
       splitLine: { lineStyle: { color: '#f0f0f0' } },
@@ -897,20 +918,24 @@ export function buildCompareScoreBar(cards: CardLite[], plats: PlatLite[]) {
     series: [
       {
         type: 'bar' as const,
-        name: '自研提速倍率（×）',
+        name: isOperator ? '自研提速倍率（×）' : '平台得分',
         barMaxWidth: DETAIL_BAR_MAX_WIDTH,
         itemStyle: { color: DETAIL_CHART_PRIMARY_SOFT, borderRadius: [2, 2, 0, 0] },
         data: cards.map((c) =>
-          c.ownScore != null ? Number((c.ownScore / 100).toFixed(2)) : 0,
+          isOperator
+            ? c.ownScore != null
+              ? Number((c.ownScore / 100).toFixed(2))
+              : 0
+            : (c.ownScore ?? 0),
         ),
       },
       {
         type: 'bar' as const,
-        name: '开源基准（×1.0）',
+        name: isOperator ? '开源基准（×1.0）' : 'NVIDIA基线（100）',
         barMaxWidth: DETAIL_BAR_MAX_WIDTH,
         /** 与详情/概览双柱辅色一致（绿），图例与柱同色 */
         itemStyle: { color: DETAIL_CHART_SECONDARY_SOFT, borderRadius: [2, 2, 0, 0] },
-        data: cards.map(() => 1),
+        data: cards.map(() => (isOperator ? 1 : 100)),
       },
     ],
   }

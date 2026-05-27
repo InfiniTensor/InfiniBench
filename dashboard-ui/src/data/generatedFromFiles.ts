@@ -14052,7 +14052,7 @@ export const BW_CARD_FROM_FILES = {
 } as Record<string, Record<string, unknown>>
 
 export const BENCHMARK_DATA_META = {
-  "generatedAt": "2026-05-15T09:04:45.073Z",
+  "generatedAt": "2026-05-27T10:00:59.753Z",
   "operatorSources": [
     "new_data\\operator\\ascend_operator_20260430.csv",
     "new_data\\operator\\cambricon_operator_20260506.csv",

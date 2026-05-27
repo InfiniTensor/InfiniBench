@@ -30,6 +30,7 @@ const store = useInfiniDashboard()
 const {
   currentView,
   activeDimKey,
+  filterState,
   detailState,
   detailPlat,
   detailKpiCells,
@@ -251,6 +252,27 @@ watch(
     scheduleDetailCiChartResize()
   },
   { flush: 'post' },
+)
+
+/** 与标题同源：详情 URL 平台优先，避免路由已切、store 尚未同步时 key/option 不一致 */
+const effectiveDetailPlatKey = computed(() => {
+  if (route.name === 'detail') {
+    const pk = routeParamString(route.params.platKey)
+    if (pk) return pk
+  }
+  return detailState.value.platKey
+})
+
+/** 顶栏筛选签名：切换平台后随 filterState 重建图表，避免 ECharts 合并残留 */
+const detailFilterSig = computed(() => {
+  const fs = filterState.value[activeDimKey.value]
+  return fs ? JSON.stringify(fs) : ''
+})
+
+/** 维度/平台/筛选或视图切换时重建图表实例，避免隐藏容器内 setOption 残留上一平台图例 */
+const detailTwinChartKey = computed(
+  () =>
+    `${currentView.value}-${activeDimKey.value}-${effectiveDetailPlatKey.value}-${detailState.value.inferTab}-${detailFilterSig.value}`,
 )
 
 /** 详情区主图标题（推理维度不用算子文案） */
@@ -1124,12 +1146,13 @@ function inferRowKey(r: InferRow) {
         </div>
       </div>
 
-    <!-- 主图（与 HTML 标题文案一致） -->
-    <div ref="chartsGridRef" class="charts-grid">
+    <!-- 主图：仅详情视图挂载，离开概览时销毁实例，避免 display:none 下残留图例 -->
+    <div v-if="currentView === 'detail'" ref="chartsGridRef" class="charts-grid">
       <div class="chart-card">
         <div class="chart-title">{{ detailChartLeftTitle }}</div>
         <DashboardVChart
           v-if="hasChart(lineChartOption)"
+          :key="`line-${detailTwinChartKey}`"
           ref="detailLineChartRef"
           class="detail-chart"
           :option="lineChartOption"
@@ -1140,6 +1163,7 @@ function inferRowKey(r: InferRow) {
         <div class="chart-title">{{ detailChartRightTitle }}</div>
         <DashboardVChart
           v-if="hasChart(barChartOption)"
+          :key="`bar-${detailTwinChartKey}`"
           ref="detailBarChartRef"
           class="detail-chart"
           :option="barChartOption"

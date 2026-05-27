@@ -34,18 +34,6 @@ type CompareTableRecord = {
   delta: number | null
 }
 
-/** 列宽总和与 scroll.x 一致（与详情页数据明细 a-table 用法对齐） */
-const compareTableColumns: ColumnsType<CompareTableRecord> = [
-  { title: '平台', key: 'plat', width: 168, ellipsis: true },
-  { title: '类型', key: 'platType', width: 96, ellipsis: true },
-  { title: '平均得分', key: 'ownScore', width: 104 },
-  { title: '自研代表值', key: 'ownVal', minWidth: 120, width: 132, ellipsis: true },
-  { title: '开源/参考值', key: 'openVal', width: 132, ellipsis: true },
-  { title: '测试条数', key: 'n', width: 96 },
-  { title: '配置', key: 'extra', minWidth: 140, width: 200, ellipsis: true },
-  { title: '相对 NVIDIA', key: 'delta', width: 112 },
-]
-
 function compareRowKey(r: CompareTableRecord) {
   return r.plat.key
 }
@@ -58,12 +46,56 @@ function compareDeltaText(delta: number | null) {
 
 const {
   currentView,
+  activeDimKey,
   comparePageTitle,
   compareKpiBlocks,
+  compareNvidiaBaselineCard,
   compareScoreOption,
   compareLatencyOption,
   compareTableRows,
 } = useInfiniDashboard()
+
+function compareOpenValText(record: CompareTableRecord): string {
+  if (activeDimKey.value === 'op') return record.card.openVal || '—'
+  if (record.plat.key === 'nvidia') return '—'
+  return compareNvidiaBaselineCard.value?.ownVal || '—'
+}
+
+/** 列宽总和与 scroll.x 一致（与详情页数据明细 a-table 用法对齐） */
+const compareTableColumns = computed((): ColumnsType<CompareTableRecord> => {
+  const isOp = activeDimKey.value === 'op'
+  return [
+    { title: '平台', key: 'plat', width: 168, ellipsis: true },
+    { title: '类型', key: 'platType', width: 96, ellipsis: true },
+    { title: '平均得分', key: 'ownScore', width: 104 },
+    {
+      title: isOp ? '自研代表值' : '代表值',
+      key: 'ownVal',
+      minWidth: 120,
+      width: 132,
+      ellipsis: true,
+    },
+    {
+      title: isOp ? '开源参考值' : 'NVIDIA基线值',
+      key: 'openVal',
+      width: isOp ? 132 : 140,
+      ellipsis: true,
+    },
+    { title: '测试条数', key: 'n', width: 96 },
+    { title: '配置', key: 'extra', minWidth: 140, width: 200, ellipsis: true },
+    { title: '相对 NVIDIA', key: 'delta', width: 112 },
+  ]
+})
+
+const compareScoreChartIsOperator = computed(() => activeDimKey.value === 'op')
+const compareScoreChartTitle = computed(() =>
+  compareScoreChartIsOperator.value ? '自研提速倍率对比' : '性能得分对比',
+)
+const compareScoreChartDesc = computed(() =>
+  compareScoreChartIsOperator.value
+    ? '相对开源基准的提速倍率 · 灰线为基准×1.0 · 越高越好'
+    : '以NVIDIA=100为基准 · 越高越好',
+)
 const { goOverview } = useDashboardNavigation()
 
 function hasChart(opt: object) {
@@ -148,10 +180,8 @@ watch(
       :class="{ 'charts-grid--compare-single-chart': !showLatencyChart }"
     >
       <div class="chart-card">
-        <div class="chart-title">自研提速倍率对比</div>
-        <div class="compare-chart-desc">
-          相对开源基准的提速倍率 · 灰线为基准×1.0 · 越高越好
-        </div>
+        <div class="chart-title">{{ compareScoreChartTitle }}</div>
+        <div class="compare-chart-desc">{{ compareScoreChartDesc }}</div>
         <DashboardVChart
           v-if="hasChart(compareScoreOption)"
           ref="compareScoreChartRef"
@@ -212,7 +242,9 @@ watch(
               <span class="compare-table-val-plain">{{ record.card.ownVal || '—' }}</span>
             </template>
             <template v-else-if="column.key === 'openVal'">
-              <span class="compare-table-val-plain">{{ record.card.openVal || '—' }}</span>
+              <span class="compare-table-val-plain">{{
+                compareOpenValText(record as CompareTableRecord)
+              }}</span>
             </template>
             <template v-else-if="column.key === 'n'">
               {{ record.card.n ?? '—' }}

@@ -241,6 +241,17 @@ export function createInfiniDashboardStore() {
     return applyCardFilter(data, activeDim.value, filterState.value)
   })
 
+  /** 对比明细「NVIDIA基线值」列：与 compareCards 同筛选口径，不依赖是否勾选 NVIDIA 参与对比 */
+  const compareNvidiaBaselineCard = computed(() => {
+    if (activeDimKey.value === 'op') return undefined
+    const dim = DIMS[activeDim.value]
+    const raw = (CARD_DATA as Record<string, CardRow[]>)[dim.key] || []
+    let data = raw.filter((c) => c.key === 'nvidia')
+    if (!data.length) return undefined
+    data = applyDimFilterOverlays(dim, data)
+    return applyCardFilter(data, activeDim.value, filterState.value)[0]
+  })
+
   const detailPlat = computed(() => PLATFORMS.find((p) => p.key === detailState.value.platKey)!)
 
   const detailCard = computed(() => {
@@ -406,6 +417,8 @@ export function createInfiniDashboardStore() {
   const detailTestEnvSourceHint = computed(() => DETAIL_TEST_ENV_SOURCE_HINT)
 
   const lineChartOption = computed(() => {
+    /** 非详情视图不产出 option，配合详情图 v-if 卸载实例，避免 display:none 内 setOption 残留图例 */
+    if (currentView.value !== 'detail') return {}
     const plat = detailPlat.value
     const dk = activeDimKey.value
     if (dk === 'op') {
@@ -488,6 +501,7 @@ export function createInfiniDashboardStore() {
   })
 
   const barChartOption = computed(() => {
+    if (currentView.value !== 'detail') return {}
     const plat = detailPlat.value
     const dk = activeDimKey.value
     if (dk === 'op') {
@@ -583,13 +597,17 @@ export function createInfiniDashboardStore() {
     return {}
   })
 
-  const ciChartOption = computed(() => buildCiLineOption(getCiSeriesForDim(activeDimKey.value)))
+  const ciChartOption = computed(() => {
+    if (currentView.value !== 'detail') return {}
+    return buildCiLineOption(getCiSeriesForDim(activeDimKey.value))
+  })
 
   const compareScoreOption = computed(() => {
     const cards = compareCards.value
     const plats = cards.map((c) => PLATFORMS.find((p) => p.key === c.key)!).filter(Boolean)
     if (!cards.length || !plats.length) return {}
-    return buildCompareScoreBar(cards as { key: string; ownScore: number | null }[], plats)
+    const mode = activeDimKey.value === 'op' ? 'operator' : 'platformScore'
+    return buildCompareScoreBar(cards as { key: string; ownScore: number | null }[], plats, mode)
   })
 
   const compareLatencyOption = computed(() => {
@@ -1000,6 +1018,7 @@ export function createInfiniDashboardStore() {
     activeDimKey,
     overviewCards,
     compareCards,
+    compareNvidiaBaselineCard,
     detailPlat,
     detailCard,
     opDetailRows,
