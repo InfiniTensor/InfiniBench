@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo -e "${RED}Unknown option: $1${NC}"
-            echo "Usage: bash build.sh --platform <cuda|metax>"
+            echo "Usage: bash build.sh --platform <cuda|metax|corex>"
             exit 1
             ;;
     esac
@@ -31,7 +31,7 @@ done
 
 if [[ -z "$PLATFORM" ]]; then
     echo -e "${RED}ERROR: --platform is required.${NC}"
-    echo "Usage: bash build.sh --platform <cuda|metax>"
+    echo "Usage: bash build.sh --platform <cuda|metax|corex>"
     exit 1
 fi
 
@@ -71,6 +71,35 @@ if [[ "$PLATFORM" == "metax" ]]; then
     echo -e "${YELLOW}Building with make_maca...${NC}"
     make_maca -j$(nproc)
 
+elif [[ "$PLATFORM" == "corex" ]]; then
+    # ---- CoreX (Iluvatar/天数智芯) platform ----
+
+    export COREX_PATH=${COREX_PATH:-/usr/local/corex}
+    export LD_LIBRARY_PATH=${COREX_PATH}/lib64:${LD_LIBRARY_PATH:-}
+
+    if [ ! -d "${COREX_PATH}" ]; then
+        echo -e "${RED}ERROR: CoreX SDK not found at ${COREX_PATH}${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}[CoreX] Using CoreX SDK: ${COREX_PATH}${NC}"
+    echo -e "${YELLOW}[CoreX] CMake: $(cmake --version | head -1)${NC}"
+
+    # Clean CMake cache per CoreX migration guide requirement
+    if [ -d "build" ]; then
+        rm -rf build/CMakeCache.txt build/CMakeFiles build/Makefile
+    fi
+
+    mkdir -p build
+    cd build
+
+    echo -e "${YELLOW}Configuring with CoreX CMake...${NC}"
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DPLATFORM=corex \
+        -DCMAKE_CUDA_ARCHITECTURES=ivcore20
+
+    echo -e "${YELLOW}Building...${NC}"
+    make -j$(nproc)
+
 elif [[ "$PLATFORM" == "cuda" ]]; then
     # ---- NVIDIA CUDA platform ----
 
@@ -91,7 +120,7 @@ elif [[ "$PLATFORM" == "cuda" ]]; then
     make -j$(nproc)
 
 else
-    echo -e "${RED}ERROR: Unsupported platform '${PLATFORM}'. Use 'cuda' or 'metax'.${NC}"
+    echo -e "${RED}ERROR: Unsupported platform '${PLATFORM}'. Use 'cuda', 'metax', or 'corex'.${NC}"
     exit 1
 fi
 

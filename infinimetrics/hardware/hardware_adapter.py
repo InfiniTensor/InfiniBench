@@ -31,11 +31,16 @@ logger = logging.getLogger(__name__)
 
 
 def detect_platform() -> str:
-    """Detect GPU platform: 'metax' if MACA/cu-bridge is available, else 'cuda'."""
+    """Detect GPU platform: 'metax', 'corex', or 'cuda'."""
+    # Check MetaX first (cucc/mxcc compiler)
     maca_path = Path("/opt/maca")
     cucc_path = maca_path / "tools" / "cu-bridge" / "bin" / "cucc"
     if cucc_path.exists() or shutil.which("cucc") or shutil.which("mxcc"):
         return "metax"
+    # Check Iluvatar CoreX (ixsmi or clang++)
+    corex_path = Path("/usr/local/corex")
+    if (corex_path / "bin" / "ixsmi").exists() or (corex_path / "bin" / "clang++").exists():
+        return "corex"
     return "cuda"
 
 
