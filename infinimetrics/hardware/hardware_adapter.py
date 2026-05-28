@@ -42,6 +42,12 @@ _DEVICE_CONFIGS = {
         "build_script": "build.sh",
         "has_cache_test": False,
     },
+    "ascend": {
+        "binary_name": "npu_perf_suite",
+        "benchmark_subdir": "ascend-memory-benchmark",
+        "build_script": "build.sh",
+        "has_cache_test": False,
+    },
 }
 
 
@@ -135,6 +141,8 @@ class HardwareTestAdapter(BaseAdapter):
         testcase = config.get("_testcase", "")
         if "cambricon" in testcase.lower():
             return "cambricon"
+        if "ascend" in testcase.lower():
+            return "ascend"
         if device == "cpu":
             return "cpu"
         return "cuda"
