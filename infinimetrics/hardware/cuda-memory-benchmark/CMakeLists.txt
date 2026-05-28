@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 
 # Platform detection
 if(NOT DEFINED PLATFORM)
-    message(FATAL_ERROR "PLATFORM is not set. Use -DPLATFORM=cuda, -DPLATFORM=metax, or -DPLATFORM=corex")
+    message(FATAL_ERROR "PLATFORM is not set. Use -DPLATFORM=cuda, -DPLATFORM=metax, -DPLATFORM=corex, or -DPLATFORM=hygon")
 endif()
 
 if(PLATFORM STREQUAL "cuda")
@@ -11,8 +11,10 @@ elseif(PLATFORM STREQUAL "metax")
     project(CudaPerfSuite LANGUAGES CXX VERSION 1.0.0)
 elseif(PLATFORM STREQUAL "corex")
     project(CudaPerfSuite LANGUAGES CXX CUDA VERSION 1.0.0)
+elseif(PLATFORM STREQUAL "hygon")
+    project(CudaPerfSuite LANGUAGES CXX VERSION 1.0.0)
 else()
-    message(FATAL_ERROR "Unsupported PLATFORM: ${PLATFORM}. Use 'cuda', 'metax', or 'corex'")
+    message(FATAL_ERROR "Unsupported PLATFORM: ${PLATFORM}. Use 'cuda', 'metax', 'corex', or 'hygon'")
 endif()
 
 # Set C++ standard
@@ -65,6 +67,19 @@ elseif(PLATFORM STREQUAL "corex")
 
     include_directories($ENV{COREX_PATH}/include)
     link_directories($ENV{COREX_PATH}/lib64)
+
+    add_executable(cuda_perf_suite ${CUDA_SOURCES} ${CXX_SOURCES})
+
+elseif(PLATFORM STREQUAL "hygon")
+    # Hygon DCU: use hipcc from DTK
+    find_program(HIPCC hipcc REQUIRED)
+    set(CMAKE_CXX_COMPILER "${HIPCC}")
+    set(CMAKE_C_COMPILER "${HIPCC}")
+
+    # Treat .cu as CXX so hipcc handles kernel launch syntax
+    set_source_files_properties(src/main.cu PROPERTIES LANGUAGE CXX)
+
+    add_compile_definitions(GPU_PLATFORM_HIP)
 
     add_executable(cuda_perf_suite ${CUDA_SOURCES} ${CXX_SOURCES})
 endif()

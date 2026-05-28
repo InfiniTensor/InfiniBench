@@ -2,7 +2,7 @@
 
 #include "cuda_utils.h"
 #include "performance_test.h"
-#include <cuda_runtime.h>
+#include "gpu_runtime.h"
 #include <iomanip>
 #include <iostream>
 #include <vector>

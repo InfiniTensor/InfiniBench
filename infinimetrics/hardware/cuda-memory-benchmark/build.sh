@@ -4,6 +4,8 @@
 # Usage:
 #   bash build.sh --platform cuda    # Build with native CUDA (NVIDIA GPU)
 #   bash build.sh --platform metax   # Build with cu-bridge (MetaX GPU)
+#   bash build.sh --platform corex   # Build with CoreX SDK (Iluvatar GPU)
+#   bash build.sh --platform hygon   # Build with DTK/HIP (Hygon DCU)
 
 set -e  # Exit on error
 
@@ -23,7 +25,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo -e "${RED}Unknown option: $1${NC}"
-            echo "Usage: bash build.sh --platform <cuda|metax|corex>"
+            echo "Usage: bash build.sh --platform <cuda|metax|corex|hygon>"
             exit 1
             ;;
     esac
@@ -31,7 +33,7 @@ done
 
 if [[ -z "$PLATFORM" ]]; then
     echo -e "${RED}ERROR: --platform is required.${NC}"
-    echo "Usage: bash build.sh --platform <cuda|metax|corex>"
+    echo "Usage: bash build.sh --platform <cuda|metax|corex|hygon>"
     exit 1
 fi
 
@@ -100,6 +102,30 @@ elif [[ "$PLATFORM" == "corex" ]]; then
     echo -e "${YELLOW}Building...${NC}"
     make -j$(nproc)
 
+elif [[ "$PLATFORM" == "hygon" ]]; then
+    # ---- Hygon DCU platform: using DTK (HIP) ----
+
+    export DTK_PATH=${DTK_PATH:-/opt/dtk}
+    export PATH=$DTK_PATH/bin:$PATH
+    export LD_LIBRARY_PATH=$DTK_PATH/lib64:${LD_LIBRARY_PATH:-}
+
+    if ! command -v hipcc &> /dev/null; then
+        echo -e "${RED}ERROR: hipcc not found. Please install DTK at ${DTK_PATH}${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}[Hygon DCU] Using DTK: ${DTK_PATH}${NC}"
+    echo -e "${YELLOW}[Hygon DCU] hipcc: $(which hipcc)${NC}"
+
+    mkdir -p build
+    cd build
+
+    echo -e "${YELLOW}Configuring with CMake + HIP...${NC}"
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DPLATFORM=hygon
+
+    echo -e "${YELLOW}Building...${NC}"
+    make -j$(nproc)
+
 elif [[ "$PLATFORM" == "cuda" ]]; then
     # ---- NVIDIA CUDA platform ----
 
@@ -120,7 +146,7 @@ elif [[ "$PLATFORM" == "cuda" ]]; then
     make -j$(nproc)
 
 else
-    echo -e "${RED}ERROR: Unsupported platform '${PLATFORM}'. Use 'cuda', 'metax', or 'corex'.${NC}"
+    echo -e "${RED}ERROR: Unsupported platform '${PLATFORM}'. Use 'cuda', 'metax', 'corex', or 'hygon'.${NC}"
     exit 1
 fi
 

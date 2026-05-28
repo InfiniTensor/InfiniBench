@@ -31,12 +31,22 @@ logger = logging.getLogger(__name__)
 
 
 def detect_platform() -> str:
-    """Detect GPU platform: 'metax', 'corex', or 'cuda'."""
+    """Detect GPU platform: 'metax', 'corex', 'hygon', or 'cuda'."""
     # Check MetaX first (cucc/mxcc compiler)
     maca_path = Path("/opt/maca")
     cucc_path = maca_path / "tools" / "cu-bridge" / "bin" / "cucc"
     if cucc_path.exists() or shutil.which("cucc") or shutil.which("mxcc"):
         return "metax"
+    # Check Hygon DCU (DTK / hipcc)
+    dtk_path = Path("/opt/dtk")
+    if (dtk_path / "bin" / "hipcc").exists() or shutil.which("hipcc"):
+        # DTK also ships rocm-smi / hy-smi
+        if (dtk_path / "bin" / "hy-smi").exists() or shutil.which("hy-smi"):
+            return "hygon"
+        # hipcc available but not necessarily Hygon — could be AMD ROCm.
+        # Still treat as hygon if DTK path exists.
+        if dtk_path.exists():
+            return "hygon"
     # Check Iluvatar CoreX (ixsmi or clang++)
     corex_path = Path("/usr/local/corex")
     if (corex_path / "bin" / "ixsmi").exists() or (corex_path / "bin" / "clang++").exists():
