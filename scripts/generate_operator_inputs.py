@@ -88,6 +88,7 @@ DTYPE_BYTES = {"float16": 2, "float32": 4, "bfloat16": 2}
 
 OP_INPUT_NAMES = {
     "matmul": ["a", "b"],
+    "mm": ["a", "b"],
     "add": ["a", "b"],
     "sub": ["a", "b"],
     "mul": ["a", "b"],
@@ -95,10 +96,13 @@ OP_INPUT_NAMES = {
     "linear": ["input", "weight", "bias"],
 }
 
+# Devices that use InfiniOps framework (ATen fallback) instead of InfiniCore
+INFINIOPS_DEVICES = {"cambricon", "ascend"}
+
 
 def get_input_shapes(operator: str, base_shape: Tuple[int, ...]) -> List[List[int]]:
     """Derive input shapes from a base shape for a given operator."""
-    if operator == "matmul":
+    if operator in ("matmul", "mm"):
         m, k = base_shape[0], base_shape[1]
         n = k  # square by default
         return [[m, k], [k, n]]
@@ -113,7 +117,7 @@ def get_input_shapes(operator: str, base_shape: Tuple[int, ...]) -> List[List[in
 
 def get_output_shape(operator: str, input_shapes: List[List[int]]) -> List[int]:
     """Calculate output shape from input shapes."""
-    if operator == "matmul":
+    if operator in ("matmul", "mm"):
         m = input_shapes[0][0]
         n = input_shapes[1][1]
         return [m, n]
@@ -172,9 +176,10 @@ def build_test_config(
     rtol: float = 1e-3,
 ) -> Dict[str, Any]:
     """Build an InfiniMetrics-compatible test input dict."""
+    framework = "InfiniOps" if device.lower() in INFINIOPS_DEVICES else "InfiniCore"
     return {
         "run_id": f"opbench.{operator}._",
-        "testcase": f"operator.InfiniCore.{operator.capitalize()}",
+        "testcase": f"operator.{framework}.{operator.capitalize()}",
         "config": {
             "operator": operator,
             "device": device,
@@ -224,7 +229,7 @@ def enumerate_test_cases(
     cases: List[TestCase] = []
     idx = 0
     for op in operators:
-        shape_table = MATMUL_SHAPES if op in ("matmul", "linear") else ELEMENTWISE_SHAPES
+        shape_table = MATMUL_SHAPES if op in ("matmul", "mm", "linear") else ELEMENTWISE_SHAPES
         for scale in scales:
             shapes = shape_table.get(scale, [])
             for shape in shapes:
@@ -366,7 +371,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--operators",
         nargs="+",
         default=["matmul", "add", "sub", "mul", "div"],
-        choices=["matmul", "add", "sub", "mul", "div", "linear"],
+        choices=["matmul", "mm", "add", "sub", "mul", "div", "linear"],
         help="Operators to generate inputs for (default: matmul add sub mul div)",
     )
     parser.add_argument(
