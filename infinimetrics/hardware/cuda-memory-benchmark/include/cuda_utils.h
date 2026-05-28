@@ -241,9 +241,9 @@ struct CudaDeviceInfo {
         info.shared_mem_per_block = prop.sharedMemPerBlock;
         info.max_threads_per_block = prop.maxThreadsPerBlock;
         info.multi_processor_count = prop.multiProcessorCount;
-#if CUDART_VERSION >= 11000
-        // clockRate was removed in CUDA 11.0+
-        // Set to 0 as it's no longer available
+#if defined(GPU_PLATFORM_MUSA)
+        info.clock_rate = 0;
+#elif CUDART_VERSION >= 11000
         info.clock_rate = 0;
 #else
         info.clock_rate = prop.clockRate;

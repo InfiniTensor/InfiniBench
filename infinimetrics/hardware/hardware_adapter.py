@@ -55,7 +55,11 @@ def detect_platform() -> str:
 
 
 class HardwareTestAdapter(BaseAdapter):
-    """Adapter for CUDA Unified hardware performance tests."""
+    """Adapter for CUDA Unified hardware performance tests.
+
+    Works on NVIDIA GPUs and CUDA-compatible domestic GPUs
+    (Moore Threads, Iluvatar CoreX, MetaX, etc.) via CUDA compatibility layers.
+    """
 
     def __init__(
         self,

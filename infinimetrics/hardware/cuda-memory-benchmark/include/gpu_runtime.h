@@ -3,11 +3,61 @@
 /// @file gpu_runtime.h
 /// Unified GPU runtime header for cross-platform GPU computing.
 ///
-/// When GPU_PLATFORM_HIP is defined (e.g. Hygon DCU / AMD ROCm),
-/// CUDA API names are mapped to their HIP equivalents via macros.
-/// Otherwise, the native CUDA runtime is used as-is.
+/// - GPU_PLATFORM_MUSA: Moore Threads MUSA  (maps cuda* -> musa*)
+/// - GPU_PLATFORM_HIP:  Hygon DCU / AMD ROCm (maps cuda* -> hip*)
+/// - Otherwise:         Native CUDA (NVIDIA, MetaX cu-bridge, CoreX)
 
-#ifdef GPU_PLATFORM_HIP
+#ifdef GPU_PLATFORM_MUSA
+// ---- MUSA backend (Moore Threads / 摩尔线程) ----
+#include <musa_runtime.h>
+
+// --- Error types ---
+#define cudaError_t              musaError_t
+#define cudaSuccess              musaSuccess
+#define cudaGetErrorString       musaGetErrorString
+#define cudaGetLastError         musaGetLastError
+
+// --- Device management ---
+#define cudaSetDevice            musaSetDevice
+#define cudaGetDevice            musaGetDevice
+#define cudaGetDeviceCount       musaGetDeviceCount
+#define cudaGetDeviceProperties  musaGetDeviceProperties
+#define cudaDeviceSynchronize    musaDeviceSynchronize
+#define cudaDeviceProp           musaDeviceProp
+
+// --- Memory management ---
+#define cudaMalloc               musaMalloc
+#define cudaFree                 musaFree
+#define cudaMallocHost           musaMallocHost
+#define cudaFreeHost             musaFreeHost
+#define cudaMemcpy               musaMemcpy
+#define cudaMemcpyAsync          musaMemcpyAsync
+#define cudaMemset               musaMemset
+
+// --- Stream ---
+#define cudaStream_t             musaStream_t
+#define cudaStreamCreate         musaStreamCreate
+#define cudaStreamDestroy        musaStreamDestroy
+#define cudaStreamSynchronize    musaStreamSynchronize
+
+// --- Event ---
+#define cudaEvent_t              musaEvent_t
+#define cudaEventCreate          musaEventCreate
+#define cudaEventDestroy         musaEventDestroy
+#define cudaEventRecord          musaEventRecord
+#define cudaEventSynchronize     musaEventSynchronize
+#define cudaEventElapsedTime     musaEventElapsedTime
+
+// --- Memory copy constants ---
+#define cudaMemcpyHostToDevice   musaMemcpyHostToDevice
+#define cudaMemcpyDeviceToHost   musaMemcpyDeviceToHost
+#define cudaMemcpyDeviceToDevice musaMemcpyDeviceToDevice
+
+// --- Version ---
+#define cudaRuntimeGetVersion    musaRuntimeGetVersion
+#define cudaDriverGetVersion     musaDriverGetVersion
+
+#elif defined(GPU_PLATFORM_HIP)
 // ---- HIP backend (Hygon DCU, AMD ROCm) ----
 #include <hip/hip_runtime.h>
 

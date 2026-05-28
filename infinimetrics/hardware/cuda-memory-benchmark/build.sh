@@ -2,10 +2,11 @@
 
 # Build script for CUDA Performance Suite
 # Usage:
-#   bash build.sh --platform cuda    # Build with native CUDA (NVIDIA GPU)
-#   bash build.sh --platform metax   # Build with cu-bridge (MetaX GPU)
-#   bash build.sh --platform corex   # Build with CoreX SDK (Iluvatar GPU)
-#   bash build.sh --platform hygon   # Build with DTK/HIP (Hygon DCU)
+#   bash build.sh --platform cuda      # Build with native CUDA (NVIDIA GPU)
+#   bash build.sh --platform metax     # Build with cu-bridge (MetaX GPU)
+#   bash build.sh --platform corex     # Build with CoreX SDK (Iluvatar GPU)
+#   bash build.sh --platform hygon     # Build with DTK/HIP (Hygon DCU)
+#   bash build.sh --platform moore  # Build with mcc -mtgpu (Moore Threads)
 
 set -e  # Exit on error
 
@@ -25,7 +26,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo -e "${RED}Unknown option: $1${NC}"
-            echo "Usage: bash build.sh --platform <cuda|metax|corex|hygon>"
+            echo "Usage: bash build.sh --platform <cuda|metax|corex|hygon|moore>"
             exit 1
             ;;
     esac
@@ -33,7 +34,7 @@ done
 
 if [[ -z "$PLATFORM" ]]; then
     echo -e "${RED}ERROR: --platform is required.${NC}"
-    echo "Usage: bash build.sh --platform <cuda|metax|corex|hygon>"
+    echo "Usage: bash build.sh --platform <cuda|metax|corex|hygon|moore>"
     exit 1
 fi
 
@@ -74,7 +75,7 @@ if [[ "$PLATFORM" == "metax" ]]; then
     make_maca -j$(nproc)
 
 elif [[ "$PLATFORM" == "corex" ]]; then
-    # ---- CoreX (Iluvatar/天数智芯) platform ----
+    # ---- CoreX (Iluvatar) platform ----
 
     export COREX_PATH=${COREX_PATH:-/usr/local/corex}
     export LD_LIBRARY_PATH=${COREX_PATH}/lib64:${LD_LIBRARY_PATH:-}
@@ -126,6 +127,29 @@ elif [[ "$PLATFORM" == "hygon" ]]; then
     echo -e "${YELLOW}Building...${NC}"
     make -j$(nproc)
 
+elif [[ "$PLATFORM" == "moore" ]]; then
+    # ---- Moore Threads platform: using mcc -mtgpu ----
+
+    export MUSA_HOME=${MUSA_HOME:-/usr/local/musa}
+
+    if ! command -v mcc &> /dev/null; then
+        echo -e "${RED}ERROR: mcc not found. Please install MUSA SDK at ${MUSA_HOME}${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}[Moore Threads] Using mcc: $(which mcc)${NC}"
+    echo -e "${YELLOW}[Moore Threads] MUSA_HOME: ${MUSA_HOME}${NC}"
+
+    mkdir -p build
+
+    echo -e "${YELLOW}Building with mcc -mtgpu (MUSA)...${NC}"
+    mcc -O3 -DGPU_PLATFORM_MUSA -mtgpu \
+        --musa-path="$MUSA_HOME" \
+        -I./include \
+        ./src/main.cu \
+        -o build/cuda_perf_suite \
+        -L"$MUSA_HOME/lib" -lmusart
+
 elif [[ "$PLATFORM" == "cuda" ]]; then
     # ---- NVIDIA CUDA platform ----
 
@@ -146,7 +170,7 @@ elif [[ "$PLATFORM" == "cuda" ]]; then
     make -j$(nproc)
 
 else
-    echo -e "${RED}ERROR: Unsupported platform '${PLATFORM}'. Use 'cuda', 'metax', 'corex', or 'hygon'.${NC}"
+    echo -e "${RED}ERROR: Unsupported platform '${PLATFORM}'. Use 'cuda', 'metax', 'corex', 'hygon', or 'moore'.${NC}"
     exit 1
 fi
 

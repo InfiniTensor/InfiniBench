@@ -26,6 +26,7 @@ class HardwareDetector:
         "--format=csv,noheader",
     ]
     AMD_SMI_CANDIDATES = ["amd-smi", "rocm-smi"]
+    MTHREADS_SMI_QUERY = ["mthreads-gmi", "-q"]
 
     @classmethod
     def detect(cls, accel_type_hint: str = "") -> Dict[str, Any]:
@@ -52,6 +53,12 @@ class HardwareDetector:
             if probe == "nvidia" and cls._probe_nvidia(hw):
                 hw["accelerator_type"] = "nvidia"
                 hw["cuda_version"] = cls._get_cuda_version() or hw["cuda_version"]
+                return hw
+            if probe == "moore" and cls._probe_mthreads(hw):
+                hw["accelerator_type"] = "moore"
+                musa_ver = cls._get_musa_version()
+                if musa_ver:
+                    hw["cuda_version"] = f"MUSA {musa_ver}"
                 return hw
             if probe == "amd" and cls._probe_amd(hw):
                 hw["accelerator_type"] = "amd"
@@ -107,12 +114,9 @@ class HardwareDetector:
     @classmethod
     def _get_probe_order(cls, hint: str) -> List[str]:
         hint = hint.lower().strip()
-        probes = (
-            [hint]
-            if hint in ("nvidia", "amd", "ascend", "cambricon", "generic")
-            else []
-        )
-        for p in ["nvidia", "amd", "ascend", "cambricon", "generic"]:
+        valid_types = ("nvidia", "moore", "amd", "ascend", "cambricon", "generic")
+        probes = [hint] if hint in valid_types else []
+        for p in ["nvidia", "moore", "amd", "ascend", "cambricon", "generic"]:
             if p not in probes:
                 probes.append(p)
         return probes
@@ -136,6 +140,33 @@ class HardwareDetector:
                 mm = re.search(r"(\d+)\s*MiB", p[1])
                 if mm:
                     hw["gpu_memory_gb"] = int(mm.group(1)) // 1024
+            return True
+        except Exception:
+            return False
+
+    @classmethod
+    def _probe_mthreads(cls, hw: Dict[str, Any]) -> bool:
+        try:
+            if not _which("mthreads-gmi"):
+                return False
+            r = subprocess.run(
+                cls.MTHREADS_SMI_QUERY, capture_output=True, text=True, timeout=5
+            )
+            if r.returncode != 0 or not r.stdout.strip():
+                return False
+
+            gpu_count = 0
+            gpu_name = None
+            for line in r.stdout.splitlines():
+                if re.search(r"\bGPU\b|\bProduct\b", line):
+                    gpu_count += 1
+                if "Product" in line and ":" in line:
+                    gpu_name = line.split(":", 1)[1].strip()
+
+            if gpu_count > 0:
+                hw["gpu_count"] = max(hw["gpu_count"], gpu_count)
+            if hw["gpu_model"] == "Unknown":
+                hw["gpu_model"] = gpu_name or "Moore Threads GPU"
             return True
         except Exception:
             return False
@@ -235,6 +266,21 @@ class HardwareDetector:
                         m = re.search(r"release\s+(\d+\.\d+)", line)
                         if m:
                             return m.group(1)
+        except Exception:
+            pass
+        return None
+
+    @classmethod
+    def _get_musa_version(cls) -> Optional[str]:
+        try:
+            r = subprocess.run(
+                ["mcc", "--version"], capture_output=True, text=True, timeout=2
+            )
+            if r.returncode == 0:
+                for line in r.stdout.splitlines():
+                    m = re.search(r"(\d+\.\d+\.\d+)", line)
+                    if m:
+                        return m.group(1)
         except Exception:
             pass
         return None
