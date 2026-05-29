@@ -152,10 +152,12 @@ def _get_attributes(config: dict) -> dict:
     return attrs
 
 
-def _pick_slot(op_name: str, device: str) -> Optional[int]:
+def _pick_slot(op_name: str, device: str, fallback: int = _ATEN_FALLBACK_SLOT) -> int:
     """Pick the best implementation slot for an operator on a device.
 
-    Returns the first active native slot, or the ATen fallback slot (8).
+    Returns the first active native slot, or the fallback slot.
+    NOTE: Returns int always — never None — so callers must NOT use ``or``
+    because slot 0 is a valid (falsy) value.
     """
     op_pascal = "".join(part.capitalize() for part in op_name.split("_"))
     op_cls = getattr(infini.ops, op_pascal, None)
@@ -163,7 +165,7 @@ def _pick_slot(op_name: str, device: str) -> Optional[int]:
         indices = op_cls.active_implementation_indices(device)
         if indices:
             return indices[0]
-    return None
+    return fallback
 
 
 # ---------------------------------------------------------------------------
@@ -387,7 +389,7 @@ class InfiniOpsAdapter(BaseAdapter):
         b = _randn_strided(shape, None, dtype=torch_dtype, device=torch_device)
         out = _empty_strided(shape, None, dtype=torch_dtype, device=torch_device)
         stream = _get_stream(torch_device)
-        slot = _pick_slot("add", torch_device) or _ATEN_FALLBACK_SLOT
+        slot = _pick_slot("add", torch_device)
 
         def infiniops_fn(a, b, out):
             infini.ops.add(a, b, out, stream=stream, implementation_index=slot)
@@ -408,7 +410,7 @@ class InfiniOpsAdapter(BaseAdapter):
         b = _randn_strided(shape, None, dtype=torch_dtype, device=torch_device)
         out = _empty_strided(shape, None, dtype=torch_dtype, device=torch_device)
         stream = _get_stream(torch_device)
-        slot = _pick_slot("mul", torch_device) or _ATEN_FALLBACK_SLOT
+        slot = _pick_slot("mul", torch_device)
 
         def infiniops_fn(a, b, out):
             infini.ops.mul(a, b, out, stream=stream, implementation_index=slot)
@@ -430,7 +432,7 @@ class InfiniOpsAdapter(BaseAdapter):
         inp = _randn_strided(in_shape, None, dtype=torch_dtype, device=torch_device)
         out = _empty_strided(in_shape, None, dtype=out_dtype, device=torch_device)
         stream = _get_stream(torch_device)
-        slot = _pick_slot("cast", torch_device) or _ATEN_FALLBACK_SLOT
+        slot = _pick_slot("cast", torch_device)
 
         def infiniops_fn(inp, out):
             infini.ops.cast(inp, out, stream=stream, implementation_index=slot)
@@ -492,7 +494,7 @@ class InfiniOpsAdapter(BaseAdapter):
         b = _randn_strided(b_shape, None, dtype=torch_dtype, device=torch_device)
         c = _randn_strided(c_shape, None, dtype=torch_dtype, device=torch_device)
         stream = _get_stream(torch_device)
-        slot = _pick_slot("gemm", torch_device) or _ATEN_FALLBACK_SLOT
+        slot = _pick_slot("gemm", torch_device)
 
         def infiniops_fn(a, b, alpha, beta, trans_a, trans_b, c):
             infini.ops.gemm(a, b, alpha, beta, trans_a, trans_b, c, stream=stream, implementation_index=slot)
@@ -524,7 +526,7 @@ class InfiniOpsAdapter(BaseAdapter):
         b = _randn_strided(b_shape, None, dtype=torch_dtype, device=torch_device)
         c = _empty_strided(c_shape, None, dtype=torch_dtype, device=torch_device)
         stream = _get_stream(torch_device)
-        slot = _pick_slot("matmul", torch_device) or _ATEN_FALLBACK_SLOT
+        slot = _pick_slot("matmul", torch_device)
 
         def infiniops_fn(a, b, c, trans_a=trans_a, trans_b=trans_b):
             infini.ops.matmul(a, b, c, trans_a, trans_b, stream=stream, implementation_index=slot)
@@ -589,7 +591,7 @@ class InfiniOpsAdapter(BaseAdapter):
         )
         out = _empty_strided(out_shape, None, dtype=torch_dtype, device=torch_device)
         stream = _get_stream(torch_device)
-        slot = _pick_slot("linear", torch_device) or _ATEN_FALLBACK_SLOT
+        slot = _pick_slot("linear", torch_device)
 
         def infiniops_fn(a, b, bias, out, trans_a=trans_a, trans_b=trans_b):
             infini.ops.linear(a, b, bias, trans_a, trans_b, out, stream=stream, implementation_index=slot)
@@ -619,7 +621,7 @@ class InfiniOpsAdapter(BaseAdapter):
         out_shape = outputs[0]["shape"] if outputs else input_shape
         out = _empty_strided(out_shape, None, dtype=torch_dtype, device=torch_device)
         stream = _get_stream(torch_device)
-        slot = _pick_slot("rms_norm", torch_device) or _ATEN_FALLBACK_SLOT
+        slot = _pick_slot("rms_norm", torch_device)
 
         def infiniops_fn(inp, weight, out, eps=eps):
             infini.ops.rms_norm(inp, weight, eps, out, stream=stream, implementation_index=slot)
@@ -644,7 +646,7 @@ class InfiniOpsAdapter(BaseAdapter):
         inp = _randn_strided(shape, None, dtype=torch_dtype, device=torch_device)
         out = _empty_strided(shape, None, dtype=torch_dtype, device=torch_device)
         stream = _get_stream(torch_device)
-        slot = _pick_slot("causal_softmax", torch_device) or _ATEN_FALLBACK_SLOT
+        slot = _pick_slot("causal_softmax", torch_device)
 
         def infiniops_fn(inp, out):
             infini.ops.causal_softmax(inp, out, stream=stream, implementation_index=slot)
@@ -668,7 +670,7 @@ class InfiniOpsAdapter(BaseAdapter):
         gate = _rand_strided(shape, None, dtype=torch_dtype, device=torch_device)
         out = _empty_strided(shape, None, dtype=torch_dtype, device=torch_device)
         stream = _get_stream(torch_device)
-        slot = _pick_slot("swiglu", torch_device) or _ATEN_FALLBACK_SLOT
+        slot = _pick_slot("swiglu", torch_device)
 
         def infiniops_fn(inp, gate, out):
             infini.ops.swiglu(inp, gate, out, stream=stream, implementation_index=slot)
@@ -791,7 +793,7 @@ class InfiniOpsAdapter(BaseAdapter):
         rstd_shape = shape[:-1] if len(shape) > 1 else (shape[0],)
         rstd_out = _empty_strided(rstd_shape, None, dtype=torch_dtype, device=torch_device)
         stream = _get_stream(torch_device)
-        slot = _pick_slot("add_rms_norm", torch_device) or _ATEN_FALLBACK_SLOT
+        slot = _pick_slot("add_rms_norm", torch_device)
 
         def infiniops_fn(inp, other, weight, out, rstd_out, eps=eps):
             infini.ops.add_rms_norm(inp, other, weight, eps, out, rstd_out, stream=stream, implementation_index=slot)
