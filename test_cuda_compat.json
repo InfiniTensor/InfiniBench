@@ -1,0 +1,16 @@
+[
+      {
+          "run_id": "cuda_samples.nvidia.quick",
+          "testcase": "compatibility.CudaSamples.PassRate",
+          "config": {
+              "platform": "nvidia",
+              "timeout_per_sample": 60,
+              "sample_filter": ["vectorAdd", "matrixMul", "clock"]
+          },
+          "metrics": [
+              {"name": "compatibility.cuda_samples.total"},
+              {"name": "compatibility.cuda_samples.compile_pass_rate"},
+              {"name": "compatibility.cuda_samples.run_pass_rate"}
+          ]
+      }
+  ]

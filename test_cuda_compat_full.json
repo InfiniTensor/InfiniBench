@@ -1,0 +1,20 @@
+[
+    {
+        "run_id": "cuda_samples.nvidia.full",
+        "testcase": "compatibility.CudaSamples.PassRate",
+        "config": {
+            "platform": "nvidia",
+            "timeout_per_sample": 120
+        },
+        "metrics": [
+            {"name": "compatibility.cuda_samples.total"},
+            {"name": "compatibility.cuda_samples.compile_passed"},
+            {"name": "compatibility.cuda_samples.compile_failed"},
+            {"name": "compatibility.cuda_samples.compile_pass_rate"},
+            {"name": "compatibility.cuda_samples.run_passed"},
+            {"name": "compatibility.cuda_samples.run_failed"},
+            {"name": "compatibility.cuda_samples.run_pass_rate"},
+            {"name": "compatibility.cuda_samples.details"}
+        ]
+    }
+]

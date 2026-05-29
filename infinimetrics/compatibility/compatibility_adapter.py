@@ -135,9 +135,14 @@ class CompatibilityAdapter(BaseAdapter):
         if not samples_root.exists():
             raise FileNotFoundError(f"CUDA samples directory not found: {samples_root}")
 
-        # Discover sample directories
+        # Discover individual sample directories (two levels deep:
+        # Samples/<category>/<sample>/)
         sample_dirs = sorted(
-            d for d in samples_root.iterdir() if d.is_dir() and (d / "CMakeLists.txt").exists()
+            d
+            for cat_dir in samples_root.iterdir()
+            if cat_dir.is_dir() and (cat_dir / "CMakeLists.txt").exists()
+            for d in cat_dir.iterdir()
+            if d.is_dir() and (d / "CMakeLists.txt").exists()
         )
 
         if sample_filter:
@@ -270,9 +275,29 @@ class CompatibilityAdapter(BaseAdapter):
         build_dir = sample_dir / "build"
         build_dir.mkdir(exist_ok=True)
 
+        sms = env.get("SMS", "80")
+        cmake_lists = sample_dir / "CMakeLists.txt"
+
+        # Patch hardcoded CMAKE_CUDA_ARCHITECTURES in CMakeLists.txt
+        # cuda-samples uses set() which overrides -D cache variables
+        if cmake_lists.exists():
+            subprocess.run(
+                [
+                    "sed", "-i",
+                    f"s/set(CMAKE_CUDA_ARCHITECTURES.*/set(CMAKE_CUDA_ARCHITECTURES {sms})/",
+                    str(cmake_lists),
+                ],
+                capture_output=True,
+                text=True,
+            )
+
         # cmake
         cmake_result = subprocess.run(
-            ["cmake", "..", f"-DSMS={env.get('SMS', '80')}"],
+            [
+                "cmake", "..",
+                f"-DSMS={sms}",
+                f"-DCMAKE_CUDA_ARCHITECTURES={sms}",
+            ],
             cwd=str(build_dir),
             capture_output=True,
             text=True,
@@ -283,8 +308,9 @@ class CompatibilityAdapter(BaseAdapter):
             return "fail", cmake_result.stderr[-500:]
 
         # make
+        nproc = os.cpu_count() or 4
         make_result = subprocess.run(
-            ["make", "-j$(nproc)"],
+            ["make", f"-j{nproc}"],
             cwd=str(build_dir),
             capture_output=True,
             text=True,
