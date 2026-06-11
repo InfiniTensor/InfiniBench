@@ -111,7 +111,7 @@ class FLOPSCalculator:
 
 
 # Register matrix operations
-@FLOPSCalculator.register(["matmul", "bmm", "batchmm"])
+@FLOPSCalculator.register(["matmul", "mm", "bmm", "batchmm"])
 def _matmul_flops(inputs: List[Dict], outputs: List[Dict]) -> float:
     """Matrix Multiplication: C = A @ B (FLOPS = 2 * M * N * K)"""
     if len(inputs) < 2:

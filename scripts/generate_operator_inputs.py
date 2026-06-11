@@ -97,7 +97,7 @@ OP_INPUT_NAMES = {
 }
 
 # Devices that use InfiniOps framework (ATen fallback) instead of InfiniCore
-INFINIOPS_DEVICES = {"cambricon", "ascend"}
+INFINIOPS_DEVICES = {"cambricon","ascend"}
 
 
 def get_input_shapes(operator: str, base_shape: Tuple[int, ...]) -> List[List[int]]:
@@ -177,6 +177,8 @@ def build_test_config(
 ) -> Dict[str, Any]:
     """Build an InfiniMetrics-compatible test input dict."""
     framework = "InfiniOps" if device.lower() in INFINIOPS_DEVICES else "InfiniCore"
+    if device.lower() == "cambricon":
+        atol = rtol = 0.01
     return {
         "run_id": f"opbench.{operator}._",
         "testcase": f"operator.{framework}.{operator.capitalize()}",

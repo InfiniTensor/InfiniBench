@@ -40,8 +40,7 @@ _PLATFORM_TO_TORCH_DEVICE = {
 # Import vendor plugin modules so PyTorch recognizes the device name
 import contextlib
 
-with contextlib.suppress(ImportError, ModuleNotFoundError):
-    import torch_mlu  # noqa: F401  — registers "mlu" device
+import torch_mlu  # noqa: F401  — registers "mlu" device
 
 with contextlib.suppress(ImportError, ModuleNotFoundError):
     import torch_npu  # noqa: F401  — registers "npu" device
