@@ -1,0 +1,61 @@
+{
+  "run_id": "opbench.matmul.large.2048x2048.float32",
+  "testcase": "operator.InfiniCore.Matmul",
+  "config": {
+    "operator": "matmul",
+    "device": "nvidia",
+    "data_base_dir": "/data/shared/baoming/workplace/infinibench/InfiniBench/test_inputs/data",
+    "inputs": [
+      {
+        "name": "a",
+        "shape": [
+          2048,
+          2048
+        ],
+        "dtype": "float32",
+        "file_path": "/data/shared/baoming/workplace/infinibench/InfiniBench/test_inputs/data/matmul_large_2048x2048_float32_a.npy",
+        "init_mode": "random"
+      },
+      {
+        "name": "b",
+        "shape": [
+          2048,
+          2048
+        ],
+        "dtype": "float32",
+        "file_path": "/data/shared/baoming/workplace/infinibench/InfiniBench/test_inputs/data/matmul_large_2048x2048_float32_b.npy",
+        "init_mode": "random"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "output",
+        "shape": [
+          2048,
+          2048
+        ],
+        "dtype": "float32"
+      }
+    ],
+    "warmup_iterations": 100,
+    "measured_iterations": 1000,
+    "tolerance": {
+      "atol": 0.001,
+      "rtol": 0.001
+    }
+  },
+  "metrics": [
+    {
+      "name": "operator.latency"
+    },
+    {
+      "name": "operator.tensor_accuracy"
+    },
+    {
+      "name": "operator.flops"
+    },
+    {
+      "name": "operator.bandwidth"
+    }
+  ]
+}
