@@ -31,8 +31,11 @@ If you plan to use the hardware testing modules, you need to build the CUDA memo
 
 ```bash
 cd infinimetrics/hardware/cuda-memory-benchmark
-bash build.sh
+bash build.sh --platform cuda
 ```
+
+For MetaX, Iluvatar, Hygon, Moore Threads, Cambricon, and Ascend build and
+runtime instructions, see [Hardware Benchmarks](../infinimetrics/hardware/README.md).
 
 **Note**: This requires:
 - CUDA toolkit (compatible with your GPU driver)
