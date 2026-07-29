@@ -1,5 +1,9 @@
 from pathlib import Path
 
+import pytest
+
+from infinimetrics.dispatcher import Dispatcher
+from infinimetrics.hardware import hardware_adapter
 from infinimetrics.hardware.hardware_adapter import HardwareTestAdapter
 
 
@@ -120,3 +124,125 @@ def test_parse_unknown_test_type_returns_no_metrics(tmp_path):
     adapter = HardwareTestAdapter(output_dir=str(tmp_path))
 
     assert adapter._parse_output(CUDA_OUTPUT, "Unknown", "run-1") == []
+
+
+@pytest.mark.parametrize(
+    ("device", "expected"),
+    [
+        ("cuda", "cuda"),
+        ("nvidia", "cuda"),
+        ("metax", "metax"),
+        ("iluvatar", "corex"),
+        ("hygon", "hygon"),
+        ("moore", "moore"),
+        ("musa", "moore"),
+        ("cambricon", "cambricon"),
+        ("mlu", "cambricon"),
+        ("ascend", "ascend"),
+        ("npu", "ascend"),
+        ("legacy-unknown-device", "cuda"),
+    ],
+)
+def test_explicit_device_aliases_preserve_unknown_cuda_fallback(
+    tmp_path, device, expected
+):
+    adapter = HardwareTestAdapter(output_dir=str(tmp_path))
+
+    assert adapter._get_device_type({"device": device}) == expected
+
+
+def test_testcase_framework_precedes_runtime_detection(tmp_path, monkeypatch):
+    adapter = HardwareTestAdapter(output_dir=str(tmp_path))
+    monkeypatch.setattr(hardware_adapter, "detect_platform", lambda: "moore")
+
+    assert (
+        adapter._get_device_type({"_testcase": "hardware.iluvatar.Stream"})
+        == "corex"
+    )
+    assert adapter._get_device_type({}) == "moore"
+
+
+def test_native_platform_paths_do_not_change_cuda_path(tmp_path):
+    cuda_binary = tmp_path / "cuda_perf_suite"
+    adapter = HardwareTestAdapter(str(cuda_binary), output_dir=str(tmp_path))
+
+    assert adapter._get_binary_path("cuda") == str(cuda_binary)
+    assert adapter._get_binary_path("metax") == str(cuda_binary)
+    assert adapter._get_binary_path("cambricon").endswith(
+        "cambricon-memory-benchmark/build/mlu_perf_suite"
+    )
+    assert adapter._get_binary_path("ascend").endswith(
+        "ascend-memory-benchmark/build/npu_perf_suite"
+    )
+
+
+@pytest.mark.parametrize(
+    "framework",
+    [
+        "cudaunified",
+        "cuda",
+        "metax",
+        "corex",
+        "iluvatar",
+        "hygon",
+        "moore",
+        "cambricon",
+        "ascend",
+    ],
+)
+def test_dispatcher_registers_every_hardware_framework(framework):
+    adapter = Dispatcher()._create_adapter("hardware", framework)
+
+    assert isinstance(adapter, HardwareTestAdapter)
+
+
+def test_cambricon_cache_maps_to_existing_metric_names(tmp_path):
+    output = """
+NRAM Bandwidth Test (BANG Kernel)
+NRAM chunk/core       Time (ms)  Eff. BW (GB/s)      TFLOPS    Spread
+---------------------------------------------------------------------
+120 kB                1.0        200.0                1.2       0.5%
+
+===================================================
+L2 Cache Bandwidth Sweep Test (BANG Kernel)
+data set     exec data      exec time     spread       Eff. bw
+---------------------------------------------------------------
+256 kB       2560 kB        1ms            0.5%          300 GB/s
+"""
+    adapter = HardwareTestAdapter(output_dir=str(tmp_path))
+
+    metrics = adapter._parse_output(output, "Cache", "cam-run", "cambricon")
+
+    assert [metric["name"] for metric in metrics] == [
+        "hardware.gpu_cache_l1",
+        "hardware.gpu_cache_l2",
+    ]
+
+
+def test_ascend_hierarchy_is_not_relabelled_as_cuda_cache(tmp_path):
+    output = """
+Memory Hierarchy Sweep Test (D2D Bandwidth)
+data set     exec data      exec time     spread       Eff. bw
+---------------------------------------------------------------
+256 kB       2560 kB        1ms            0.5%          300 GB/s
+"""
+    adapter = HardwareTestAdapter(output_dir=str(tmp_path))
+
+    metrics = adapter._parse_output(output, "Cache", "ascend-run", "ascend")
+
+    assert [metric["name"] for metric in metrics] == [
+        "hardware.memory_hierarchy_d2d"
+    ]
+
+
+def test_native_benchmarks_use_selected_device_id():
+    hardware_dir = Path(hardware_adapter.__file__).parent
+    native_files = [
+        *hardware_dir.glob("cambricon-memory-benchmark/include/*.h"),
+        *hardware_dir.glob("ascend-memory-benchmark/include/*.h"),
+    ]
+
+    assert native_files
+    for path in native_files:
+        source = path.read_text(encoding="utf-8")
+        assert "SetDevice(0)" not in source, path
