@@ -158,10 +158,11 @@ class HardwareDetector:
             gpu_count = 0
             gpu_name = None
             for line in r.stdout.splitlines():
-                if re.search(r"\bGPU\b|\bProduct\b", line):
+                stripped = line.strip()
+                if re.match(r"^GPU\d+\s", stripped):
                     gpu_count += 1
-                if "Product" in line and ":" in line:
-                    gpu_name = line.split(":", 1)[1].strip()
+                if stripped.startswith("Product Name") and ":" in stripped:
+                    gpu_name = stripped.split(":", 1)[1].strip()
 
             if gpu_count > 0:
                 hw["gpu_count"] = max(hw["gpu_count"], gpu_count)
