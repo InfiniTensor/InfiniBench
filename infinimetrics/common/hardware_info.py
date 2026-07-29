@@ -22,6 +22,11 @@ PROBE_CONFIGS = {
         "default_name": "NVIDIA GPU",
         "parse_output": True,
     },
+    "moore": {
+        "command": ["mthreads-gmi", "-q"],
+        "pattern": r"\bGPU\b|\bProduct\b",
+        "default_name": "Moore Threads GPU",
+    },
     "amd": {
         "candidates": ["amd-smi", "rocm-smi"],
         "pattern": r"\bGPU\b",
@@ -99,13 +104,17 @@ class HardwareCollector:
                     hw["cuda_version"] = (
                         self._collect_cuda_version() or hw["cuda_version"]
                     )
+                elif probe_type == "moore":
+                    musa_ver = self._collect_musa_version()
+                    if musa_ver:
+                        hw["cuda_version"] = f"MUSA {musa_ver}"
                 return hw
 
         return hw
 
     def _get_probe_order(self, hint: str) -> List[str]:
         """Get probe order based on accelerator type hint."""
-        order = ["nvidia", "amd", "ascend", "cambricon"]
+        order = ["nvidia", "moore", "amd", "ascend", "cambricon"]
         if hint in order:
             return [hint] + [p for p in order if p != hint]
         return order
@@ -137,6 +146,7 @@ class HardwareCollector:
         """Generic probe dispatcher."""
         probe_methods = {
             "nvidia": self._probe_nvidia,
+            "moore": self._probe_mthreads,
             "amd": self._probe_amd,
             "ascend": self._probe_generic_command,
             "cambricon": self._probe_generic_command,
@@ -182,6 +192,42 @@ class HardwareCollector:
             cmd, config["pattern"], config["default_name"], hw
         )
 
+    def _probe_mthreads(self, probe_type: str, hw: Dict[str, Any]) -> ProbeResult:
+        """Probe Moore Threads GPU using mthreads-gmi."""
+        config = PROBE_CONFIGS["moore"]
+        if not _which(config["command"][0]):
+            return ProbeResult(success=False)
+
+        try:
+            r = subprocess.run(
+                config["command"], capture_output=True, text=True, timeout=5
+            )
+            if r.returncode != 0 or not r.stdout.strip():
+                return ProbeResult(success=False)
+
+            gpu_count = 0
+            gpu_name = None
+            for line in r.stdout.splitlines():
+                stripped = line.strip()
+                if re.match(r"^GPU\d+\s", stripped):
+                    gpu_count += 1
+                if stripped.startswith("Product Name") and ":" in stripped:
+                    gpu_name = stripped.split(":", 1)[1].strip()
+
+            if gpu_count > 0:
+                hw["gpu_count"] = max(hw["gpu_count"], gpu_count)
+            if hw["gpu_model"] == "Unknown":
+                hw["gpu_model"] = gpu_name or config["default_name"]
+
+            # Try to get MUSA version
+            musa_ver = self._collect_musa_version()
+            if musa_ver:
+                hw["cuda_version"] = f"MUSA {musa_ver}"
+
+            return ProbeResult(success=True, count=hw["gpu_count"])
+        except Exception:
+            return ProbeResult(success=False)
+
     def _probe_generic_command(
         self, probe_type: str, hw: Dict[str, Any]
     ) -> ProbeResult:
@@ -226,6 +272,21 @@ class HardwareCollector:
                             return match.group(1)
         except Exception as e:
             logger.debug(f"Failed to collect CUDA version: {e}")
+        return None
+
+    def _collect_musa_version(self) -> Optional[str]:
+        """Collect MUSA version using mcc."""
+        try:
+            r = subprocess.run(
+                ["mcc", "--version"], capture_output=True, text=True, timeout=2
+            )
+            if r.returncode == 0:
+                for line in r.stdout.splitlines():
+                    match = re.search(r"(\d+\.\d+\.\d+)", line)
+                    if match:
+                        return match.group(1)
+        except Exception:
+            pass
         return None
 
 
