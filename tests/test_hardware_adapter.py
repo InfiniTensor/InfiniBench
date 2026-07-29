@@ -246,3 +246,15 @@ def test_native_benchmarks_use_selected_device_id():
     for path in native_files:
         source = path.read_text(encoding="utf-8")
         assert "SetDevice(0)" not in source, path
+
+
+def test_cambricon_uses_current_cnrt_success_enum():
+    source = (
+        Path(hardware_adapter.__file__).parent
+        / "cambricon-memory-benchmark"
+        / "include"
+        / "cnrt_utils.h"
+    ).read_text(encoding="utf-8")
+
+    assert "cnrtSuccess" in source
+    assert "CNRT_RET_SUCCESS" not in source

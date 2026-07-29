@@ -18,7 +18,7 @@ namespace mlu_perf {
 #define MLU_CHECK(call) \
     do { \
         cnrtRet_t ret = call; \
-        if (ret != CNRT_RET_SUCCESS) { \
+        if (ret != cnrtSuccess) { \
             std::ostringstream oss; \
             oss << "CNRT error at " << __FILE__ << ":" << __LINE__ \
                 << ": " << cnrtGetErrorStr(ret) \

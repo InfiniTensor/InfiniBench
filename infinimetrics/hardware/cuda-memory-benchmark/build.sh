@@ -66,13 +66,25 @@ if [[ "$PLATFORM" == "metax" ]]; then
     echo -e "${YELLOW}[MetaX] Using cu-bridge: ${CUCC_PATH}${NC}"
 
     mkdir -p build
-    cd build
 
-    echo -e "${YELLOW}Configuring with cmake_maca...${NC}"
-    cmake_maca .. -DCMAKE_BUILD_TYPE=Release -DPLATFORM=metax
+    if command -v cmake &> /dev/null && \
+       command -v cmake_maca &> /dev/null && \
+       command -v make_maca &> /dev/null; then
+        cd build
 
-    echo -e "${YELLOW}Building with make_maca...${NC}"
-    make_maca -j$(nproc)
+        echo -e "${YELLOW}Configuring with cmake_maca...${NC}"
+        cmake_maca .. -DCMAKE_BUILD_TYPE=Release -DPLATFORM=metax
+
+        echo -e "${YELLOW}Building with make_maca...${NC}"
+        make_maca -j$(nproc)
+    else
+        echo -e "${YELLOW}CMake unavailable; compiling directly with cucc...${NC}"
+        cucc -O3 -std=c++17 \
+            -I./include \
+            -I"${CUCC_PATH}/include" \
+            ./src/main.cu \
+            -o build/cuda_perf_suite
+    fi
 
 elif [[ "$PLATFORM" == "corex" ]]; then
     # ---- CoreX (Iluvatar) platform ----
