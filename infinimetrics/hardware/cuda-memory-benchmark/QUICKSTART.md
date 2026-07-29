@@ -1,16 +1,40 @@
 # Quick Start Guide
 
-## 1. Build the Project
+## 1. Build
 
 ```bash
-cd benchmarks/hardware/cuda-memory-benchmark
-./build.sh
+cd cuda-memory-benchmark
+
+# NVIDIA GPU
+bash build.sh --platform cuda
+
+# MetaX
+bash build.sh --platform metax
+
+# Iluvatar CoreX
+bash build.sh --platform corex
+
+# Hygon DCU
+bash build.sh --platform hygon
+
+# Moore Threads
+bash build.sh --platform moore
 ```
 
 ## 2. Run All Tests
 
 ```bash
+# NVIDIA
 ./build/cuda_perf_suite --all
+
+# Moore Threads (specify GPU device)
+MUSA_VISIBLE_DEVICES=0 ./build/cuda_perf_suite --all
+
+# MetaX
+MACA_VISIBLE_DEVICES=0 ./build/cuda_perf_suite --all
+
+# Hygon
+HIP_VISIBLE_DEVICES=0 ./build/cuda_perf_suite --all
 ```
 
 ## 3. Run Individual Test Suites
@@ -33,15 +57,14 @@ Standard STREAM benchmark measuring sustainable memory bandwidth.
 ```
 Tests L1 and L2 cache performance with varying working set sizes.
 
-
 ## 4. Common Usage Patterns
 
-### Quick Performance Check (Default Settings)
+### Quick Performance Check
 ```bash
 ./build/cuda_perf_suite --all
 ```
 
-### Detailed STREAM Benchmark (More Iterations)
+### Detailed STREAM Benchmark
 ```bash
 ./build/cuda_perf_suite --stream --iterations 50
 ```
@@ -51,7 +74,7 @@ Tests L1 and L2 cache performance with varying working set sizes.
 ./build/cuda_perf_suite --all --device 1
 ```
 
-### Quiet Mode (Less Output)
+### Quiet Mode
 ```bash
 ./build/cuda_perf_suite --all --quiet
 ```
@@ -65,42 +88,8 @@ The tests report:
 
 Lower CV = more consistent results.
 
-## 6. Example Output
+## 6. Next Steps
 
-```
-╔═══════════════════════════════════════════════════════════════╗
-║                                                               ║
-║        CUDA Performance Benchmark Suite v1.0                  ║
-║                                                               ║
-║        Comprehensive GPU Memory & Cache Testing               ║
-║                                                               ║
-╚═══════════════════════════════════════════════════════════════╝
-
-=== System Information ===
-CUDA Devices: 1
-
-Device 0: NVIDIA A100-SXM4-40GB
-  Compute Capability: 8.0
-  Total Global Memory: 39.25 GB
-  L2 Cache Size: 40960 KB
-  Multiprocessors: 108
-  Max Threads per Block: 1024
-
-...
-
-Memory Copy Bandwidth Sweep Test
-Direction: Host to Device
-Memory Type: Pinned
-
-Size (MB)       Time (ms)  Bandwidth (GB/s)     CV (%)
---------------------------------------------------------------
-     0.06            1.234             25.60        2.30
-     0.13            2.456             25.80        1.90
-     ...
-```
-
-## 7. Next Steps
-
-- Read [README.md](README.md) for detailed documentation
+- Read [README.md](README.md) for detailed documentation and platform notes
 - Adjust test parameters for your specific use case
 - Integrate into your performance testing workflow
