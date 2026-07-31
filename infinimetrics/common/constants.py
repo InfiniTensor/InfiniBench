@@ -19,6 +19,7 @@ class AcceleratorType(str, Enum):
     AMD = "amd"  # ROCm
     ASCEND = "ascend"  # Huawei NPU
     CAMBRICON = "cambricon"  # Cambricon MLU
+    MTHREADS = "moore"  # Moore Threads MUSA
     GENERIC = "generic"
 
 
