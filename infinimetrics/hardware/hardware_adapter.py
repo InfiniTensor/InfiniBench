@@ -1,77 +1,104 @@
 #!/usr/bin/env python3
-"""Hardware Test Adapter for CUDA Unified Benchmark Suite"""
+"""Hardware test adapter for CUDA-compatible accelerators."""
 
 import logging
-import subprocess
 import re
 import shutil
+import subprocess
 from pathlib import Path
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
 
 from infinimetrics.adapter import BaseAdapter
-from infinimetrics.common.csv_utils import save_csv, create_timeseries_metric
 from infinimetrics.common.command_builder import build_command_from_config
 from infinimetrics.common.constants import (
-    TEST_TYPE_MAP,
-    MEMORY_DIRECTIONS,
-    STREAM_OPERATIONS,
-    MEMORY_CSV_FIELDS,
-    L1_CACHE_CSV_FIELDS,
-    L2_CACHE_CSV_FIELDS,
-    L1_CACHE_PATTERN,
-    L2_CACHE_PATTERN,
     CACHE_TEST_TIMEOUT,
     DEFAULT_TEST_TIMEOUT,
+    L1_CACHE_CSV_FIELDS,
+    L1_CACHE_PATTERN,
+    L2_CACHE_CSV_FIELDS,
+    L2_CACHE_PATTERN,
+    MEMORY_CSV_FIELDS,
+    MEMORY_DIRECTIONS,
     METRIC_PREFIX_MEM_SWEEP,
+    STREAM_OPERATIONS,
+    TEST_TYPE_MAP,
     InfiniMetricsJson,
 )
+from infinimetrics.common.csv_utils import create_timeseries_metric
+from infinimetrics.hardware.constants import PLATFORM_ALIASES, PLATFORM_CONFIGS
 from infinimetrics.utils.time_utils import get_timestamp
 
 logger = logging.getLogger(__name__)
 
 
 def detect_platform() -> str:
-    """Detect GPU platform: 'metax' if MACA/cu-bridge is available, else 'cuda'."""
+    """Detect the installed accelerator toolchain."""
+    if shutil.which("mcc") or shutil.which("mthreads-gmi"):
+        return "moore"
+
     maca_path = Path("/opt/maca")
-    cucc_path = maca_path / "tools" / "cu-bridge" / "bin" / "cucc"
-    if cucc_path.exists() or shutil.which("cucc") or shutil.which("mxcc"):
+    if (
+        (maca_path / "tools" / "cu-bridge" / "bin" / "cucc").exists()
+        or shutil.which("cucc")
+        or shutil.which("mxcc")
+    ):
         return "metax"
+
+    dtk_path = Path("/opt/dtk")
+    if (
+        (dtk_path / "bin" / "hy-smi").exists()
+        or shutil.which("hy-smi")
+        or (dtk_path.exists() and shutil.which("hipcc"))
+    ):
+        return "hygon"
+
+    corex_path = Path("/usr/local/corex")
+    if (corex_path / "bin" / "ixsmi").exists() or (
+        corex_path / "bin" / "clang++"
+    ).exists():
+        return "corex"
     return "cuda"
 
 
 class HardwareTestAdapter(BaseAdapter):
-    """Adapter for CUDA Unified hardware performance tests."""
+    """Adapter for unified hardware performance tests.
+
+    The existing CUDA constructor and private method signatures remain supported.
+    Additional platforms are selected through ``config.device`` or runtime
+    toolchain detection.
+    """
 
     def __init__(
         self,
         cuda_perf_path: str = None,
         output_dir: str = "./output",
+        perf_binary_path: str = None,
     ):
+        self.hardware_dir = Path(__file__).parent
         self.cuda_perf_path = cuda_perf_path or str(
-            Path(__file__).parent
-            / "cuda-memory-benchmark"
-            / "build"
-            / "cuda_perf_suite"
+            self.hardware_dir / "cuda-memory-benchmark" / "build" / "cuda_perf_suite"
         )
+        self.perf_binary_path = perf_binary_path
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.build_dir = Path(__file__).parent / "cuda-memory-benchmark"
+
+        # Preserve attributes used by existing callers.
+        self.build_dir = self.hardware_dir / "cuda-memory-benchmark"
         self.build_script = self.build_dir / "build.sh"
 
     def setup(self, config: Dict[str, Any]) -> None:
-        """Initialize resources before running tests."""
-        device = config.get("device", "cuda").lower()
+        """Build the selected benchmark binary if it is missing."""
+        device = self._get_device_type(config)
         if (
             device == "cpu"
             or config.get("skip_build", False)
-            or Path(self.cuda_perf_path).exists()
+            or Path(self._get_binary_path(device)).exists()
         ):
             return
-        self._build_cuda_project()
+        self._build_project(device)
 
     def process(self, test_input: Any) -> Dict[str, Any]:
-        """Process test input and return results."""
-        # Normalize test input to dict format
+        """Process a hardware test input and return normalized metrics."""
         test_input = self._normalize_test_input(test_input)
         if not test_input:
             raise ValueError(f"Invalid test_input type: {type(test_input)}")
@@ -80,34 +107,33 @@ class HardwareTestAdapter(BaseAdapter):
         config = test_input.get(InfiniMetricsJson.CONFIG, {})
         run_id = test_input.get(InfiniMetricsJson.RUN_ID, "unknown")
 
-        logger.info(f"HardwareTestAdapter: Processing {testcase}")
-
-        # Put CSV files in hardware/ subdirectory to match JSON location
+        logger.info("HardwareTestAdapter: Processing %s", testcase)
         self.output_dir = Path(config.get("output_dir", "./output")) / "hardware"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        device = config.get("device", "cuda").lower()
+        device = self._get_device_type(config)
         test_type = config.get("test_type", "comprehensive")
 
         try:
             if device == "cpu":
                 logger.info(
-                    "CPU mode: Skipping hardware tests (not supported on CPU), returning empty results"
+                    "CPU mode: Skipping hardware tests (not supported on CPU), "
+                    "returning empty results"
                 )
                 metrics = []
                 command = None
             else:
-                logger.info("GPU mode (device=%s): Executing CUDA tests", device)
-                cmd = self._build_command(config)
-                command = " ".join(cmd)  # Store command as string
-                output = self._execute_test(cmd, test_type)
-                metrics = self._parse_output(output, test_type, run_id)
+                logger.info("Accelerator mode (platform=%s): Executing tests", device)
+                cmd = self._build_command(config, device)
+                command = " ".join(cmd)
+                output = self._execute_test(cmd, test_type, device)
+                metrics = self._parse_output(output, test_type, run_id, device)
 
-            # Add command to config for traceability
             result_config = config.copy()
             if command:
                 result_config["command"] = command
-
+            if device not in ("cpu", "cuda"):
+                result_config.setdefault("platform", device)
             return {
                 InfiniMetricsJson.RESULT_CODE: 0,
                 InfiniMetricsJson.TIME: get_timestamp(),
@@ -116,66 +142,106 @@ class HardwareTestAdapter(BaseAdapter):
                 InfiniMetricsJson.CONFIG: result_config,
                 InfiniMetricsJson.METRICS: metrics,
             }
-
-        except Exception as e:
-            # Log error with context, then re-raise for Executor to handle
+        except Exception as exc:
             logger.error(
-                f"HardwareTestAdapter: Test failed for {testcase}\n"
-                f"  Device: {device}\n"
-                f"  Test Type: {test_type}\n"
-                f"  Error: {str(e)}",
+                "HardwareTestAdapter: Test failed for %s\n"
+                "  Device: %s\n"
+                "  Test Type: %s\n"
+                "  Error: %s",
+                testcase,
+                device,
+                test_type,
+                str(exc),
                 exc_info=True,
             )
             raise
 
-    def _build_cuda_project(self) -> None:
-        """Build CUDA project if needed."""
-        if not self.build_dir.exists():
-            raise FileNotFoundError(
-                f"CUDA benchmark directory not found: {self.build_dir}"
-            )
-        if not self.build_script.exists():
-            raise FileNotFoundError(f"Build script not found: {self.build_script}")
-        platform = detect_platform()
-        logger.info(
-            "Building CUDA project in: %s (platform: %s)", self.build_dir, platform
+    def _get_device_type(self, config: Dict[str, Any]) -> str:
+        """Resolve an explicit device or the locally installed toolchain."""
+        explicit = str(config.get("device", "")).lower().strip()
+        if explicit == "cpu":
+            return "cpu"
+        if explicit:
+            # Unknown explicit device values historically used the CUDA suite.
+            return PLATFORM_ALIASES.get(explicit, "cuda")
+
+        return detect_platform()
+
+    @staticmethod
+    def _get_device_config(device: str) -> Dict[str, Any]:
+        config = PLATFORM_CONFIGS.get(device)
+        if not config:
+            raise ValueError(f"Unknown device type: {device}")
+        return config
+
+    def _get_binary_path(self, device: str) -> str:
+        if self.perf_binary_path:
+            return self.perf_binary_path
+        if device in ("cuda", "metax", "corex", "hygon", "moore"):
+            return self.cuda_perf_path
+        device_config = self._get_device_config(device)
+        return str(
+            self.hardware_dir
+            / device_config["benchmark_subdir"]
+            / "build"
+            / device_config["binary_name"]
         )
+
+    def _build_cuda_project(self) -> None:
+        """Build the detected CUDA-compatible project through the legacy entrypoint."""
+        self._build_project(detect_platform())
+
+    def _build_project(self, device: str) -> None:
+        device_config = self._get_device_config(device)
+        build_dir = self.hardware_dir / device_config["benchmark_subdir"]
+        build_script = build_dir / "build.sh"
+        if not build_dir.exists():
+            raise FileNotFoundError(f"Benchmark directory not found: {build_dir}")
+        if not build_script.exists():
+            raise FileNotFoundError(f"Build script not found: {build_script}")
+
+        command = ["bash", str(build_script)]
+        if device_config["build_platform"]:
+            command.extend(["--platform", device_config["build_platform"]])
+
+        logger.info("Building %s project in: %s", device, build_dir)
         try:
             result = subprocess.run(
-                ["bash", str(self.build_script), "--platform", platform],
-                cwd=str(self.build_dir),
+                command,
+                cwd=str(build_dir),
                 capture_output=True,
                 text=True,
                 timeout=300,
             )
             if result.returncode != 0:
-                raise RuntimeError(f"Failed to build CUDA project:\n{result.stderr}")
-            logger.info(
-                "CUDA project build completed successfully (platform: %s)", platform
-            )
+                raise RuntimeError(
+                    f"Failed to build {device} hardware project:\n{result.stderr}"
+                )
+            logger.info("%s hardware project build completed successfully", device)
         except subprocess.TimeoutExpired:
-            raise RuntimeError("CUDA project build timed out after 5 minutes")
+            raise RuntimeError("Hardware project build timed out after 5 minutes")
 
-    def _build_command(self, config: Dict[str, Any]) -> List[str]:
-        """Build command for CUDA test suite."""
+    def _build_command(self, config: Dict[str, Any], device: str = "cuda") -> List[str]:
+        """Build a benchmark command using the existing CUDA CLI contract."""
         test_type = config.get("test_type", "all")
-        cuda_test_type = TEST_TYPE_MAP.get(test_type, test_type.lower())
-
-        base_command = [self.cuda_perf_path, f"--{cuda_test_type}"]
-
-        # Use command builder for optional parameters
+        cli_test_type = TEST_TYPE_MAP.get(test_type, test_type.lower())
+        base_command = [self._get_binary_path(device), f"--{cli_test_type}"]
         param_mappings = [
             ("device_id", "--device"),
             ("iterations", "--iterations"),
             ("array_size", "--array-size"),
         ]
-
         return build_command_from_config(base_command, config, param_mappings)
 
-    def _execute_test(self, cmd: List[str], test_type: str) -> str:
-        """Execute CUDA test and return output."""
-        if not Path(self.cuda_perf_path).exists():
-            raise RuntimeError(f"cuda_perf_suite not found: {self.cuda_perf_path}")
+    def _execute_test(
+        self, cmd: List[str], test_type: str, device: str = "cuda"
+    ) -> str:
+        """Execute a benchmark and return stdout."""
+        binary = self._get_binary_path(device)
+        if not Path(binary).exists():
+            if device == "cuda":
+                raise RuntimeError(f"cuda_perf_suite not found: {binary}")
+            raise RuntimeError(f"{device} benchmark binary not found: {binary}")
         logger.info("Executing: %s", " ".join(cmd))
 
         timeout = (
@@ -186,42 +252,46 @@ class HardwareTestAdapter(BaseAdapter):
         )
         return result.stdout
 
-    def _parse_output(self, output: str, test_type: str, run_id: str) -> List[Dict]:
-        """Parse test output based on test type."""
+    def _parse_output(
+        self,
+        output: str,
+        test_type: str,
+        run_id: str,
+        device: str = "cuda",
+    ) -> List[Dict]:
+        """Parse benchmark output while preserving existing CUDA metric names."""
+        cache_parser = self._get_device_config(device)["cache_parser"]
         if test_type == "Comprehensive":
             return (
                 self._parse_memory_bandwidth(output, run_id, METRIC_PREFIX_MEM_SWEEP)
                 + self._parse_stream_benchmark(output)
-                + self._parse_cache_bandwidth(output, run_id)
+                + self._parse_cache_for_platform(output, run_id, cache_parser)
             )
 
-        # Single test type
         metric_map = {
-            "MemSweep": (METRIC_PREFIX_MEM_SWEEP, self._parse_memory_bandwidth),
-            "Stream": (None, self._parse_stream_benchmark),
-            "Cache": (None, self._parse_cache_bandwidth),
+            "MemSweep": lambda: self._parse_memory_bandwidth(
+                output, run_id, METRIC_PREFIX_MEM_SWEEP
+            ),
+            "Stream": lambda: self._parse_stream_benchmark(output),
+            "Cache": lambda: self._parse_cache_for_platform(
+                output, run_id, cache_parser
+            ),
         }
-
-        if test_type in metric_map:
-            prefix, parser = metric_map[test_type]
-            return parser(output, run_id, prefix) if prefix else parser(output, run_id)
-        return []
+        parser = metric_map.get(test_type)
+        return parser() if parser else []
 
     def _parse_memory_bandwidth(
         self, output: str, run_id: str, metric_prefix: str
     ) -> List[Dict]:
-        """Parse memory bandwidth test output."""
+        """Parse memory bandwidth sweep output."""
         metrics = []
         is_sweep = "sweep" in metric_prefix
-
         for direction_label, key in MEMORY_DIRECTIONS:
             csv_data = self._parse_bandwidth_data(output, direction_label)
-
             if not csv_data:
                 continue
 
             metric_name = f"{metric_prefix}_{key}"
-
             if is_sweep:
                 metrics.append(
                     self._create_timeseries_metric(
@@ -241,36 +311,36 @@ class HardwareTestAdapter(BaseAdapter):
                         "unit": "GB/s",
                     }
                 )
-
         return metrics
 
     def _parse_bandwidth_data(self, output: str, direction: str) -> List[Dict]:
-        """Parse bandwidth data for a specific direction."""
+        """Parse bandwidth rows for one transfer direction."""
         csv_data = []
-
-        # Sweep format - match from direction header to next section
-        # The pattern stops at: ==== (next section), Direction:, STREAM:, or end of string
-        sweep_pattern = rf"{direction}.*?Size \(MB\)\s+Time \(ms\)Bandwidth \(GB/s\)\s+CV \(%\)\s*-+\s*(.*?)\s*(?=\n=+|Direction:|STREAM:|\Z)"
+        sweep_pattern = (
+            rf"{direction}.*?Size \(MB\)\s+Time \(ms\)\s*Bandwidth \(GB/s\)"
+            rf"\s+CV \(%\)\s*-+\s*(.*?)\s*"
+            rf"(?=\n=+|Direction:|STREAM:|\Z)"
+        )
         sweep_match = re.search(sweep_pattern, output, re.DOTALL)
-
         if sweep_match:
-            data_block = sweep_match.group(1)
-            for line in data_block.strip().split("\n"):
+            for line in sweep_match.group(1).strip().split("\n"):
                 line = line.strip()
-                if line and not line.startswith("-"):
+                if line and not line.startswith("-") and not line.startswith("NOTE"):
                     result = self._parse_sweep_line(line)
                     if result:
                         csv_data.append(result)
-
         return csv_data
 
     @staticmethod
     def _parse_sweep_line(line: str) -> Optional[Dict]:
-        """Parse a line from sweep format output."""
+        """Parse one memory sweep row."""
         parts = line.split()
         if len(parts) >= 3:
             try:
-                return {"size_mb": float(parts[0]), "bandwidth_gbps": float(parts[2])}
+                return {
+                    "size_mb": float(parts[0]),
+                    "bandwidth_gbps": float(parts[2]),
+                }
             except (ValueError, IndexError):
                 pass
         return None
@@ -283,7 +353,7 @@ class HardwareTestAdapter(BaseAdapter):
         fields: List[str],
         unit: str = "GB/s",
     ) -> Dict:
-        """Create a timeseries metric with CSV file."""
+        """Create a timeseries metric and its CSV file."""
         return create_timeseries_metric(
             output_dir=self.output_dir,
             metric_name=name,
@@ -296,12 +366,12 @@ class HardwareTestAdapter(BaseAdapter):
     def _parse_stream_benchmark(self, output: str, run_id: str = None) -> List[Dict]:
         """Parse STREAM benchmark output."""
         metrics = []
-        for op in STREAM_OPERATIONS:
-            match = re.search(rf"STREAM_{op.capitalize()}\s+(\d+\.\d+)", output)
+        for operation in STREAM_OPERATIONS:
+            match = re.search(rf"STREAM_{operation.capitalize()}\s+(\d+\.\d+)", output)
             if match:
                 metrics.append(
                     {
-                        "name": f"hardware.stream_{op}",
+                        "name": f"hardware.stream_{operation}",
                         "value": float(match.group(1)),
                         "type": "scalar",
                         "unit": "GB/s",
@@ -309,14 +379,19 @@ class HardwareTestAdapter(BaseAdapter):
                 )
         return metrics
 
-    def _parse_cache_bandwidth(self, output: str, run_id: str) -> List[Dict]:
-        """Parse cache bandwidth sweep test output."""
-        metrics = []
+    def _parse_cache_for_platform(
+        self, output: str, run_id: str, parser_name: str
+    ) -> List[Dict]:
+        if parser_name == "cuda":
+            return self._parse_cache_bandwidth(output, run_id)
+        raise ValueError(f"Unknown cache parser: {parser_name}")
 
-        # Parse L1
+    def _parse_cache_bandwidth(self, output: str, run_id: str) -> List[Dict]:
+        """Parse the existing CUDA L1 and L2 cache output."""
+        metrics = []
         l1_match = re.search(L1_CACHE_PATTERN, output, re.DOTALL)
         if l1_match:
-            l1_data = self._parse_cache_lines(l1_match.group(1), cache_level="l1")
+            l1_data = self._parse_cache_lines(l1_match.group(1), "l1")
             if l1_data:
                 metrics.append(
                     self._create_timeseries_metric(
@@ -327,10 +402,9 @@ class HardwareTestAdapter(BaseAdapter):
                     )
                 )
 
-        # Parse L2
         l2_match = re.search(L2_CACHE_PATTERN, output, re.DOTALL)
         if l2_match:
-            l2_data = self._parse_cache_lines(l2_match.group(1), cache_level="l2")
+            l2_data = self._parse_cache_lines(l2_match.group(1), "l2")
             if l2_data:
                 metrics.append(
                     self._create_timeseries_metric(
@@ -340,41 +414,21 @@ class HardwareTestAdapter(BaseAdapter):
                         L2_CACHE_CSV_FIELDS,
                     )
                 )
-
         return metrics
 
     def _parse_cache_lines(self, text: str, cache_level: str) -> List[Dict]:
-        """
-        Parse cache metrics from text lines.
-
-        Args:
-            text: Text containing cache data lines
-            cache_level: Either 'l1' or 'l2'
-
-        Returns:
-            List of parsed cache metric dictionaries
-        """
-        csv_data = []
-
+        """Parse cache metric rows."""
+        rows = []
         for line in text.strip().split("\n"):
-            if parsed := self._parse_cache_line(line, cache_level):
-                csv_data.append(parsed)
+            parsed = self._parse_cache_line(line, cache_level)
+            if parsed:
+                rows.append(parsed)
+        return rows
 
-        return csv_data
-
-    def _parse_cache_line(self, line: str, cache_level: str) -> Optional[Dict]:
-        """
-        Parse a single cache line.
-
-        Args:
-            line: Line of text containing cache metrics
-            cache_level: Either 'l1' or 'l2'
-
-        Returns:
-            Dictionary with parsed metrics or None if parsing fails
-        """
+    @staticmethod
+    def _parse_cache_line(line: str, cache_level: str) -> Optional[Dict]:
+        """Parse one CUDA-style cache metric row."""
         parts = line.split()
-
         if cache_level == "l1" and len(parts) >= 5:
             try:
                 return {
@@ -386,7 +440,6 @@ class HardwareTestAdapter(BaseAdapter):
                 }
             except (ValueError, IndexError):
                 pass
-
         elif cache_level == "l2" and len(parts) >= 7:
             try:
                 return {
@@ -399,5 +452,4 @@ class HardwareTestAdapter(BaseAdapter):
                 }
             except (ValueError, IndexError):
                 pass
-
         return None
