@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # test_type must use TestCategory enum (not string literals)
 _ADAPTER_REGISTRY = {
     (TestCategory.OPERATOR, "infinicore"): lambda: _create_infinicore_adapter(),
+    (TestCategory.OPERATOR, "infiniops"): lambda: _create_infiniops_adapter(),
     (TestCategory.HARDWARE, "cudaunified"): lambda: _create_hardware_adapter(),
     (TestCategory.COMM, "nccltest"): lambda: _create_nccltests_adapter(),
     (TestCategory.INFER, "infinilm"): lambda: _create_inference_adapter(),
@@ -38,6 +39,13 @@ def _create_infinicore_adapter():
     from infinimetrics.operators.infinicore_adapter import InfiniCoreAdapter
 
     return InfiniCoreAdapter()
+
+
+def _create_infiniops_adapter():
+    """Create InfiniOps adapter (lazy import)."""
+    from infinimetrics.operators.infiniops_adapter import InfiniOpsAdapter
+
+    return InfiniOpsAdapter()
 
 
 def _create_nccltests_adapter():

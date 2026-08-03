@@ -8,7 +8,11 @@ Actual performance may vary due to hardware optimizations and implementation det
 
 from typing import Dict, List, Optional, Callable
 
-from infinimetrics.common.constants import DTYPE_BYTES_MAP
+from infinimetrics.common.constants import (
+    BandwidthField,
+    DTYPE_BYTES_MAP,
+    TensorSpec,
+)
 
 
 class FLOPSCalculator:
@@ -103,7 +107,7 @@ class FLOPSCalculator:
     @staticmethod
     def _get_tensor_size(tensor: Dict) -> int:
         """Get total number of elements in tensor"""
-        shape = tensor.get("shape", [])
+        shape = tensor.get(TensorSpec.SHAPE, [])
         size = 1
         for dim in shape:
             size *= dim
@@ -111,14 +115,14 @@ class FLOPSCalculator:
 
 
 # Register matrix operations
-@FLOPSCalculator.register(["matmul", "bmm", "batchmm"])
+@FLOPSCalculator.register(["matmul", "mm", "bmm", "batchmm"])
 def _matmul_flops(inputs: List[Dict], outputs: List[Dict]) -> float:
     """Matrix Multiplication: C = A @ B (FLOPS = 2 * M * N * K)"""
     if len(inputs) < 2:
         return 0.0
 
-    a_shape = inputs[0].get("shape", [])
-    b_shape = inputs[1].get("shape", [])
+    a_shape = inputs[0].get(TensorSpec.SHAPE, [])
+    b_shape = inputs[1].get(TensorSpec.SHAPE, [])
 
     if len(a_shape) == 2 and len(b_shape) == 2:
         m, k = a_shape
@@ -135,14 +139,14 @@ def _matmul_flops(inputs: List[Dict], outputs: List[Dict]) -> float:
     return 0.0
 
 
-@FLOPSCalculator.register(["addmm", "linear"])
+@FLOPSCalculator.register(["addmm"])
 def _addmm_flops(inputs: List[Dict], outputs: List[Dict]) -> float:
     """AddMM: C = beta * bias + alpha * (input @ weight)"""
     if len(inputs) < 3:
         return 0.0
 
-    input_shape = inputs[1].get("shape", [])
-    weight_shape = inputs[2].get("shape", [])
+    input_shape = inputs[1].get(TensorSpec.SHAPE, [])
+    weight_shape = inputs[2].get(TensorSpec.SHAPE, [])
 
     if len(input_shape) >= 2 and len(weight_shape) >= 2:
         m, k = input_shape[-2], input_shape[-1]
@@ -158,6 +162,28 @@ def _addmm_flops(inputs: List[Dict], outputs: List[Dict]) -> float:
     return 0.0
 
 
+@FLOPSCalculator.register(["linear"])
+def _linear_flops(inputs: List[Dict], outputs: List[Dict]) -> float:
+    """Linear: output = input @ weight + bias."""
+    if len(inputs) < 2:
+        return 0.0
+
+    input_shape = inputs[0].get(TensorSpec.SHAPE, [])
+    weight_shape = inputs[1].get(TensorSpec.SHAPE, [])
+    output_shape = outputs[0].get(TensorSpec.SHAPE, []) if outputs else []
+    if len(input_shape) < 2 or len(weight_shape) < 2 or not output_shape:
+        return 0.0
+
+    k = input_shape[-1]
+    n = output_shape[-1]
+    batch = 1
+    for dim in input_shape[:-1]:
+        batch *= dim
+
+    bias_flops = batch * n if len(inputs) >= 3 else 0
+    return 2.0 * batch * n * k + bias_flops
+
+
 @FLOPSCalculator.register(["conv2d", "conv2d_backward"])
 def _conv2d_flops(inputs: List[Dict], outputs: List[Dict]) -> float:
     """
@@ -170,11 +196,11 @@ def _conv2d_flops(inputs: List[Dict], outputs: List[Dict]) -> float:
         return 0.0
 
     # Input: [N, C_in, H_in, W_in]
-    input_shape = inputs[0].get("shape", [])
+    input_shape = inputs[0].get(TensorSpec.SHAPE, [])
     # Weight: [C_out, C_in, K_h, K_w]
-    weight_shape = inputs[1].get("shape", [])
+    weight_shape = inputs[1].get(TensorSpec.SHAPE, [])
     # Output: [N, C_out, H_out, W_out]
-    output_shape = outputs[0].get("shape", [])
+    output_shape = outputs[0].get(TensorSpec.SHAPE, [])
 
     if len(input_shape) != 4 or len(weight_shape) != 4 or len(output_shape) != 4:
         return 0.0
@@ -214,7 +240,7 @@ def calculate_bandwidth(
     """
 
     def get_tensor_bytes(tensor: Dict) -> int:
-        dtype = tensor.get("dtype", "float32").lower()
+        dtype = tensor.get(TensorSpec.DTYPE, "float32").lower()
         bytes_per_element = DTYPE_BYTES_MAP.get(dtype, 4)
         size = FLOPSCalculator._get_tensor_size(tensor)
         return size * bytes_per_element
@@ -223,7 +249,7 @@ def calculate_bandwidth(
     write_bytes = sum(get_tensor_bytes(out) for out in outputs)
 
     return {
-        "read_bytes": read_bytes,
-        "write_bytes": write_bytes,
-        "total_bytes": read_bytes + write_bytes,
+        BandwidthField.READ_BYTES: read_bytes,
+        BandwidthField.WRITE_BYTES: write_bytes,
+        BandwidthField.TOTAL_BYTES: read_bytes + write_bytes,
     }
