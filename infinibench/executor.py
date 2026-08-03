@@ -175,6 +175,13 @@ class Executor:
             test_result.result_file = result_file
             test_result.duration = time.time() - start_time
 
+            # Extract result_code and error_msg from adapter response
+            if isinstance(response, dict):
+                if "result_code" in response:
+                    test_result.result_code = response["result_code"]
+                if "error_msg" in response:
+                    test_result.error_msg = response["error_msg"]
+
             logger.info(
                 f"Executor: {self.testcase} completed in {test_result.duration:.2f}s"
             )

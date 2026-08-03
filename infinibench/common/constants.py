@@ -126,6 +126,8 @@ class OperatorConfig:
     OUTPUTS = "outputs"
     ATTRIBUTES = "attributes"
     TOLERANCE = "tolerance"
+    WARMUP_ITERATIONS = "warmup_iterations"
+    MEASURED_ITERATIONS = "measured_iterations"
     INFINICORE_OP = "infinicore_op"
     TORCH_OP = "torch_op"
 
@@ -141,6 +143,46 @@ class TensorSpec:
     INPLACE = "inplace"
     FILE_PATH = "file_path"
     INIT_MODE = "init_mode"
+
+
+class AttributeSpec:
+    """Operator attribute field names."""
+
+    NAME = "name"
+    VALUE = "value"
+
+
+class MetricSpec:
+    """Metric result field names."""
+
+    NAME = "name"
+    VALUE = "value"
+    TYPE = "type"
+    RAW_DATA_URL = "raw_data_url"
+    UNIT = "unit"
+
+
+class MetricType:
+    """Metric value representations."""
+
+    SCALAR = "scalar"
+
+
+class OperatorMetric:
+    """Metric names emitted by operator adapters."""
+
+    LATENCY = "operator.latency"
+    ACCURACY = "operator.tensor_accuracy"
+    FLOPS = "operator.flops"
+    BANDWIDTH = "operator.bandwidth"
+
+
+class BandwidthField:
+    """Memory bandwidth calculation field names."""
+
+    READ_BYTES = "read_bytes"
+    WRITE_BYTES = "write_bytes"
+    TOTAL_BYTES = "total_bytes"
 
 
 class InfiniCoreResult:
@@ -164,6 +206,33 @@ PLATFORM_INFINICORE = "infinicore"
 
 # Default values
 DEFAULT_TOLERANCE = {"atol": 1e-3, "rtol": 1e-3}
+
+
+# InfiniOps runtime mappings. PyTorch dtype objects intentionally remain in
+# the adapter so importing common constants does not import PyTorch.
+INFINIOPS_PLATFORM_TO_TORCH_DEVICE = {
+    "nvidia": "cuda",
+    "metax": "cuda",
+    "iluvatar": "cuda",
+    "hygon": "cuda",
+    "moore": "musa",
+    "cambricon": "mlu",
+    "ascend": "npu",
+    "cpu": "cpu",
+}
+
+INFINIOPS_DEVICE_PLUGIN_MODULES = {
+    "mlu": "torch_mlu",
+    "npu": "torch_npu",
+    "musa": "torch_musa",
+}
+
+INFINIOPS_STREAM_ACCESSORS = {
+    "npu": ("npu", "npu_stream"),
+    "cuda": ("cuda", "cuda_stream"),
+    "mlu": ("mlu", "mlu_stream"),
+    "musa": ("musa", "musa_stream"),
+}
 
 
 # ============================================================
