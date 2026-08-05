@@ -5,7 +5,6 @@ from infinibench.operators.flops_calculator import (
     FLOPSCalculator,
     calculate_bandwidth,
 )
-from infinibench.operators.infinicore_adapter import InfiniCoreAdapter
 
 __all__ = [
     "FLOPSCalculator",
@@ -16,7 +15,11 @@ __all__ = [
 
 
 def __getattr__(name):
-    """Load InfiniOps only when callers explicitly request it."""
+    """Load optional operator adapters only when explicitly requested."""
+    if name == "InfiniCoreAdapter":
+        from infinibench.operators.infinicore_adapter import InfiniCoreAdapter
+
+        return InfiniCoreAdapter
     if name == "InfiniOpsAdapter":
         from infinibench.operators.infiniops_adapter import InfiniOpsAdapter
 

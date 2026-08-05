@@ -24,7 +24,7 @@ from infinibench.common.constants import (
     INFINIOPS_DEVICE_PLUGIN_MODULES,
     INFINIOPS_PLATFORM_TO_TORCH_DEVICE,
     INFINIOPS_STREAM_ACCESSORS,
-    InfiniMetricsJson,
+    InfiniBenchJson,
     MetricSpec,
     MetricType,
     OperatorConfig,
@@ -119,11 +119,16 @@ def _empty_strided(shape, strides, *, dtype=None, device=None):
     return torch.empty_strided(shape, strides, dtype=dtype, device=device)
 
 
-def _randn_strided(shape, strides, *, dtype=None, device=None):
+def _random_strided(shape, strides, *, dtype=None, device=None, nonzero=False):
     out = _empty_strided(shape, strides, dtype=dtype, device=device)
-    out.as_strided(
-        (out.untyped_storage().size() // out.element_size(),), (1,)
-    ).normal_()
+    flat = out.as_strided((out.untyped_storage().size() // out.element_size(),), (1,))
+    if flat.is_floating_point():
+        if nonzero:
+            flat.uniform_(1.0, 10.0)
+        else:
+            flat.normal_()
+    else:
+        flat.random_(1 if nonzero else -9, 10)
     return out
 
 
@@ -224,12 +229,13 @@ def _build_binary_case(
     inputs = _require_inputs(config, 2)
     shape = inputs[0][TensorSpec.SHAPE]
     out_shape = _output_shape(config, shape)
-    a = _randn_strided(shape, None, dtype=torch_dtype, device=torch_device)
-    b = _randn_strided(
+    a = _random_strided(shape, None, dtype=torch_dtype, device=torch_device)
+    b = _random_strided(
         inputs[1][TensorSpec.SHAPE],
         None,
         dtype=torch_dtype,
         device=torch_device,
+        nonzero=spec.name == "div",
     )
     out = _empty_strided(out_shape, None, dtype=torch_dtype, device=torch_device)
     stream = _get_stream(torch_device)
@@ -249,7 +255,10 @@ def _build_binary_case(
         return out
 
     def reference(a, b, out):
-        torch_op(a, b, out=out)
+        if spec.name == "div" and not a.is_floating_point():
+            torch_op(a, b, rounding_mode="trunc", out=out)
+        else:
+            torch_op(a, b, out=out)
         return out
 
     return BenchmarkCase(operation, reference, (a, b, out))
@@ -267,7 +276,7 @@ def _build_cast_case(
     if out_dtype_name not in _DTYPE_MAP:
         raise ValueError(f"Unsupported output dtype: {out_dtype_name}")
 
-    inp = _randn_strided(shape, None, dtype=torch_dtype, device=torch_device)
+    inp = _random_strided(shape, None, dtype=torch_dtype, device=torch_device)
     out = _empty_strided(
         shape,
         None,
@@ -294,7 +303,7 @@ def _build_concat_case(
     inputs = _require_inputs(config, 1)
     dim = _get_attributes(config).get("dim", 0)
     tensors = tuple(
-        _randn_strided(
+        _random_strided(
             input_spec[TensorSpec.SHAPE],
             None,
             dtype=torch_dtype,
@@ -311,11 +320,18 @@ def _build_concat_case(
         device=torch_device,
     )
     stream = _get_stream(torch_device)
+    slot = _pick_slot(spec.name, torch_device)
 
     def operation(*args):
         inps = list(args[:-1])
         output = args[-1]
-        infini.ops.cat(inps[0], inps[1:], dim, output, stream=stream)
+        infini.ops.cat(
+            inps,
+            dim,
+            output,
+            stream=stream,
+            implementation_index=slot,
+        )
         return output
 
     def reference(*args):
@@ -343,15 +359,15 @@ def _build_matrix_case(
     fallback_shape = [*a_shape[:-1], b_shape[-1]]
     out_shape = _output_shape(config, fallback_shape)
 
-    a = _randn_strided(a_shape, None, dtype=torch_dtype, device=torch_device)
-    b = _randn_strided(b_shape, None, dtype=torch_dtype, device=torch_device)
+    a = _random_strided(a_shape, None, dtype=torch_dtype, device=torch_device)
+    b = _random_strided(b_shape, None, dtype=torch_dtype, device=torch_device)
     stream = _get_stream(torch_device)
     slot = _pick_slot(spec.name, torch_device)
 
     if spec.name == "gemm":
         alpha = attrs.get("alpha", 1.0)
         beta = attrs.get("beta", 0.0)
-        out = _randn_strided(out_shape, None, dtype=torch_dtype, device=torch_device)
+        out = _random_strided(out_shape, None, dtype=torch_dtype, device=torch_device)
 
         def operation(a, b, alpha, beta, trans_a, trans_b, out):
             infini.ops.gemm(
@@ -390,7 +406,7 @@ def _build_matrix_case(
             bias_shape = (
                 inputs[2][TensorSpec.SHAPE] if len(inputs) >= 3 else (out_shape[-1],)
             )
-            bias = _randn_strided(
+            bias = _random_strided(
                 bias_shape, None, dtype=torch_dtype, device=torch_device
             )
 
@@ -473,10 +489,10 @@ class InfiniOpsAdapter(BaseAdapter):
         if not test_input:
             raise ValueError(f"Invalid test_input type: {type(test_input)}")
 
-        testcase = test_input.get(InfiniMetricsJson.TESTCASE, "unknown")
+        testcase = test_input.get(InfiniBenchJson.TESTCASE, "unknown")
         logger.info(f"InfiniOpsAdapter: Processing {testcase}")
-        config = test_input.get(InfiniMetricsJson.CONFIG, {})
-        self._req_metrics_template = test_input.get(InfiniMetricsJson.METRICS, [])
+        config = test_input.get(InfiniBenchJson.CONFIG, {})
+        self._req_metrics_template = test_input.get(InfiniBenchJson.METRICS, [])
 
         try:
             operator_name = str(config.get(OperatorConfig.OPERATOR, "")).lower()
@@ -627,15 +643,15 @@ class InfiniOpsAdapter(BaseAdapter):
         accuracy_pass: bool,
     ) -> Dict[str, Any]:
         response = copy.deepcopy(test_input)
-        response[InfiniMetricsJson.TIME] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        response[InfiniMetricsJson.RESULT_CODE] = (
+        response[InfiniBenchJson.TIME] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        response[InfiniBenchJson.RESULT_CODE] = (
             ErrorCode.SUCCESS if accuracy_pass else ErrorCode.INTERNAL
         )
         if not accuracy_pass:
             response[
-                InfiniMetricsJson.ERROR_MSG
+                InfiniBenchJson.ERROR_MSG
             ] = f"Accuracy check failed for operator '{operator_name}'"
-        response[InfiniMetricsJson.METRICS] = self._compute_metrics(
+        response[InfiniBenchJson.METRICS] = self._compute_metrics(
             config, avg_latency_s, accuracy_pass
         )
         return response
