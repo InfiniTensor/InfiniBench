@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hardware test adapter for CUDA-compatible accelerators."""
+"""Hardware test adapter for native and CUDA-compatible accelerators."""
 
 import logging
 import re
@@ -33,6 +33,12 @@ logger = logging.getLogger(__name__)
 
 def detect_platform() -> str:
     """Detect the installed accelerator toolchain."""
+    if (
+        shutil.which("npu-smi")
+        or shutil.which("atc")
+        or Path("/usr/local/Ascend/ascend-toolkit").exists()
+    ):
+        return "ascend"
     if shutil.which("mcc") or shutil.which("mthreads-gmi"):
         return "moore"
 
@@ -382,9 +388,32 @@ class HardwareTestAdapter(BaseAdapter):
     def _parse_cache_for_platform(
         self, output: str, run_id: str, parser_name: str
     ) -> List[Dict]:
+        if parser_name == "ascend":
+            return self._parse_ascend_d2d_size_sweep(output, run_id)
         if parser_name == "cuda":
             return self._parse_cache_bandwidth(output, run_id)
         raise ValueError(f"Unknown cache parser: {parser_name}")
+
+    def _parse_ascend_d2d_size_sweep(self, output: str, run_id: str) -> List[Dict]:
+        """Parse Ascend's ACL D2D memcpy size sweep."""
+        match = re.search(
+            r"D2D Memcpy Size Sweep Test.*?Eff\. bw\s*-+\s*\n(.*?)(?=\Z)",
+            output,
+            re.DOTALL,
+        )
+        if not match:
+            return []
+        rows = self._parse_cache_lines(match.group(1), "l2")
+        if not rows:
+            return []
+        return [
+            self._create_timeseries_metric(
+                "hardware.d2d_memcpy_size_sweep",
+                rows,
+                f"d2d_memcpy_size_sweep_{run_id}",
+                L2_CACHE_CSV_FIELDS,
+            )
+        ]
 
     def _parse_cache_bandwidth(self, output: str, run_id: str) -> List[Dict]:
         """Parse the existing CUDA L1 and L2 cache output."""

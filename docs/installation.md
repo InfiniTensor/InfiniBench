@@ -34,8 +34,8 @@ cd infinibench/hardware/cuda-memory-benchmark
 bash build.sh --platform cuda
 ```
 
-For MetaX, Iluvatar, Hygon, and Moore Threads build and runtime instructions,
-see [Hardware Benchmarks](../infinibench/hardware/README.md).
+For MetaX, Iluvatar, Hygon, Moore Threads, and Ascend build and runtime
+instructions, see [Hardware Benchmarks](../infinibench/hardware/README.md).
 
 **Note**: This requires:
 - CUDA toolkit (compatible with your GPU driver)

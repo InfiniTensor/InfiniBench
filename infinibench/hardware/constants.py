@@ -11,6 +11,8 @@ PLATFORM_ALIASES = {
     "moore": "moore",
     "mthreads": "moore",
     "musa": "moore",
+    "ascend": "ascend",
+    "npu": "ascend",
 }
 
 PLATFORM_CONFIGS = {
@@ -43,5 +45,11 @@ PLATFORM_CONFIGS = {
         "benchmark_subdir": "cuda-memory-benchmark",
         "build_platform": "moore",
         "cache_parser": "cuda",
+    },
+    "ascend": {
+        "binary_name": "npu_perf_suite",
+        "benchmark_subdir": "ascend-memory-benchmark",
+        "build_platform": None,
+        "cache_parser": "ascend",
     },
 }

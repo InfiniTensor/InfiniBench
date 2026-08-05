@@ -1,10 +1,9 @@
 from types import SimpleNamespace
 
-from infinimetrics.common import hardware_info
-from infinimetrics.common.hardware_info import HardwareCollector
-from infinimetrics.utils import hardware_detector
-from infinimetrics.utils.hardware_detector import HardwareDetector
-
+from infinibench.common import hardware_info
+from infinibench.common.hardware_info import HardwareCollector
+from infinibench.utils import hardware_detector
+from infinibench.utils.hardware_detector import HardwareDetector
 
 MTHREADS_OUTPUT = """
 Attached GPUs                                     :  2

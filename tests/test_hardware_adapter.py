@@ -2,10 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from infinimetrics.dispatcher import Dispatcher
-from infinimetrics.hardware import hardware_adapter
-from infinimetrics.hardware.hardware_adapter import HardwareTestAdapter
-
+from infinibench.dispatcher import Dispatcher
+from infinibench.hardware import hardware_adapter
+from infinibench.hardware.hardware_adapter import HardwareTestAdapter
 
 CUDA_OUTPUT = """
 Direction: Host to Device
@@ -153,6 +152,8 @@ def test_parse_unknown_test_type_returns_no_metrics(tmp_path):
         ("hygon", "hygon"),
         ("moore", "moore"),
         ("musa", "moore"),
+        ("ascend", "ascend"),
+        ("npu", "ascend"),
         ("legacy-unknown-device", "cuda"),
     ],
 )
@@ -183,6 +184,18 @@ def test_cuda_compatible_platforms_share_binary(tmp_path, device):
     assert adapter._get_binary_path(device) == str(cuda_binary)
 
 
+def test_ascend_uses_native_binary_path(tmp_path):
+    cuda_binary = tmp_path / "cuda_perf_suite"
+    adapter = HardwareTestAdapter(str(cuda_binary), output_dir=str(tmp_path))
+
+    assert Path(adapter._get_binary_path("ascend")).parts[-3:] == (
+        "ascend-memory-benchmark",
+        "build",
+        "npu_perf_suite",
+    )
+    assert adapter._get_binary_path("cuda") == str(cuda_binary)
+
+
 def test_build_cuda_project_preserves_runtime_platform_detection(tmp_path, monkeypatch):
     adapter = HardwareTestAdapter(output_dir=str(tmp_path))
     built_platforms = []
@@ -209,8 +222,111 @@ def test_dispatcher_registers_cudaunified_hardware_framework():
         "iluvatar",
         "hygon",
         "moore",
+        "ascend",
     ],
 )
 def test_dispatcher_does_not_register_devices_as_frameworks(device):
     with pytest.raises(ValueError, match="Adapter not registered"):
         Dispatcher()._create_adapter("hardware", device)
+
+
+def test_ascend_d2d_size_sweep_has_copy_specific_metric_name(tmp_path):
+    output = """
+D2D Memcpy Size Sweep Test
+data set     exec data      exec time     spread       Eff. bw
+---------------------------------------------------------------
+256 kB       2560 kB        1ms            0.5%          300 GB/s
+"""
+    adapter = HardwareTestAdapter(output_dir=str(tmp_path))
+
+    metrics = adapter._parse_output(output, "Cache", "ascend-run", "ascend")
+
+    assert [metric["name"] for metric in metrics] == ["hardware.d2d_memcpy_size_sweep"]
+
+
+def test_ascend_benchmark_uses_selected_device_id():
+    hardware_dir = Path(hardware_adapter.__file__).parent
+    native_files = list(hardware_dir.glob("ascend-memory-benchmark/include/*.h"))
+
+    assert native_files
+    for path in native_files:
+        source = path.read_text(encoding="utf-8")
+        assert "SetDevice(0)" not in source, path
+
+
+def test_ascend_memory_buffers_match_largest_sweep_case():
+    source = (
+        Path(hardware_adapter.__file__).parent
+        / "ascend-memory-benchmark"
+        / "include"
+        / "memory_bandwidth_test.h"
+    ).read_text(encoding="utf-8")
+
+    assert "const size_t max_bytes = sizes_kb.back() * 1024;" in source
+    assert "2ULL * 1024 * 1024 * 1024" not in source
+
+
+def test_ascend_system_info_only_prints_selected_device():
+    source = (
+        Path(hardware_adapter.__file__).parent
+        / "ascend-memory-benchmark"
+        / "src"
+        / "main.cc"
+    ).read_text(encoding="utf-8")
+
+    assert "NpuDeviceInfo::print(cfg.device_id);" in source
+    assert "NpuDeviceInfo::print(i);" not in source
+
+
+def test_ascend_stream_source_uses_device_arithmetic_operations():
+    source = (
+        Path(hardware_adapter.__file__).parent
+        / "ascend-memory-benchmark"
+        / "include"
+        / "stream_benchmark.h"
+    ).read_text(encoding="utf-8")
+
+    assert '"STREAM_Copy"' in source
+    assert '"STREAM_Scale"' in source
+    assert '"STREAM_Add"' in source
+    assert '"STREAM_Triad"' in source
+    assert "aclnnMulsGetWorkspaceSize" in source
+    assert "aclnnMuls" in source
+    assert source.count("aclnnAddGetWorkspaceSize") == 2
+    assert "AclScalarDescriptor add_alpha(1.0f)" in source
+    assert "AclScalarDescriptor triad_alpha(3.0f)" in source
+    assert "estimated" not in source.lower()
+
+
+def test_ascend_stream_output_publishes_four_metrics(tmp_path):
+    output = """
+STREAM Benchmark Suite
+Operation         Bandwidth (GB/s)     Time (ms)   CV (%)
+----------------------------------------------------------
+STREAM_Copy                 220.00          0.04      1.00
+STREAM_Scale                210.00          0.04      1.00
+STREAM_Add                  200.00          0.06      1.00
+STREAM_Triad                190.00          0.06      1.00
+"""
+    adapter = HardwareTestAdapter(output_dir=str(tmp_path))
+
+    metrics = adapter._parse_output(output, "Stream", "ascend-run", "ascend")
+
+    assert [metric["name"] for metric in metrics] == [
+        "hardware.stream_copy",
+        "hardware.stream_scale",
+        "hardware.stream_add",
+        "hardware.stream_triad",
+    ]
+
+
+def test_ascend_bidirectional_copy_uses_distinct_host_buffers():
+    source = (
+        Path(hardware_adapter.__file__).parent
+        / "ascend-memory-benchmark"
+        / "include"
+        / "memory_bandwidth_test.h"
+    ).read_text(encoding="utf-8")
+
+    assert "dev1.data(), max_bytes, host_src.data()" in source
+    assert "host_dst.data(), max_bytes, dev2.data()" in source
