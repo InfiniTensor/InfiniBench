@@ -152,6 +152,8 @@ def test_parse_unknown_test_type_returns_no_metrics(tmp_path):
         ("hygon", "hygon"),
         ("moore", "moore"),
         ("musa", "moore"),
+        ("cambricon", "cambricon"),
+        ("mlu", "cambricon"),
         ("ascend", "ascend"),
         ("npu", "ascend"),
         ("legacy-unknown-device", "cuda"),
@@ -182,6 +184,18 @@ def test_cuda_compatible_platforms_share_binary(tmp_path, device):
     adapter = HardwareTestAdapter(str(cuda_binary), output_dir=str(tmp_path))
 
     assert adapter._get_binary_path(device) == str(cuda_binary)
+
+
+def test_cambricon_uses_native_binary_path(tmp_path):
+    cuda_binary = tmp_path / "cuda_perf_suite"
+    adapter = HardwareTestAdapter(str(cuda_binary), output_dir=str(tmp_path))
+
+    assert Path(adapter._get_binary_path("cambricon")).parts[-3:] == (
+        "cambricon-memory-benchmark",
+        "build",
+        "mlu_perf_suite",
+    )
+    assert adapter._get_binary_path("cuda") == str(cuda_binary)
 
 
 def test_ascend_uses_native_binary_path(tmp_path):
@@ -222,12 +236,36 @@ def test_dispatcher_registers_cudaunified_hardware_framework():
         "iluvatar",
         "hygon",
         "moore",
+        "cambricon",
         "ascend",
     ],
 )
 def test_dispatcher_does_not_register_devices_as_frameworks(device):
     with pytest.raises(ValueError, match="Adapter not registered"):
         Dispatcher()._create_adapter("hardware", device)
+
+
+def test_cambricon_cache_maps_to_existing_metric_names(tmp_path):
+    output = """
+NRAM Bandwidth Test (BANG Kernel)
+NRAM chunk/core       Time (ms)  Eff. BW (GB/s)      TFLOPS    Spread
+---------------------------------------------------------------------
+120 kB                1.0        200.0                1.2       0.5%
+
+===================================================
+L2 Cache Bandwidth Sweep Test (BANG Kernel)
+data set     exec data      exec time     spread       Eff. bw
+---------------------------------------------------------------
+256 kB       2560 kB        1ms            0.5%          300 GB/s
+"""
+    adapter = HardwareTestAdapter(output_dir=str(tmp_path))
+
+    metrics = adapter._parse_output(output, "Cache", "cam-run", "cambricon")
+
+    assert [metric["name"] for metric in metrics] == [
+        "hardware.gpu_cache_l1",
+        "hardware.gpu_cache_l2",
+    ]
 
 
 def test_ascend_d2d_size_sweep_has_copy_specific_metric_name(tmp_path):
@@ -252,6 +290,28 @@ def test_ascend_benchmark_uses_selected_device_id():
     for path in native_files:
         source = path.read_text(encoding="utf-8")
         assert "SetDevice(0)" not in source, path
+
+
+def test_cambricon_benchmark_uses_selected_device_id():
+    hardware_dir = Path(hardware_adapter.__file__).parent
+    native_files = list(hardware_dir.glob("cambricon-memory-benchmark/include/*.h"))
+
+    assert native_files
+    for path in native_files:
+        source = path.read_text(encoding="utf-8")
+        assert "SetDevice(0)" not in source, path
+
+
+def test_cambricon_uses_current_cnrt_success_enum():
+    source = (
+        Path(hardware_adapter.__file__).parent
+        / "cambricon-memory-benchmark"
+        / "include"
+        / "cnrt_utils.h"
+    ).read_text(encoding="utf-8")
+
+    assert "cnrtSuccess" in source
+    assert "CNRT_RET_SUCCESS" not in source
 
 
 def test_ascend_memory_buffers_match_largest_sweep_case():

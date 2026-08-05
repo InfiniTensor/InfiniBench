@@ -1,6 +1,6 @@
 # Hardware Benchmarks
 
-InfiniBench provides one hardware adapter for NVIDIA CUDA and five additional
+InfiniBench provides one hardware adapter for NVIDIA CUDA and six additional
 accelerator platforms. Existing CUDA command shapes, behavior, and metric names
 are kept unchanged. Platform-specific tests use distinct metric names.
 
@@ -13,6 +13,7 @@ are kept unchanged. Platform-specific tests use distinct metric names.
 | Iluvatar CoreX | `corex`, `iluvatar` | `bash build.sh --platform corex` | `cuda-memory-benchmark/build/cuda_perf_suite` |
 | Hygon DCU | `hygon` | `bash build.sh --platform hygon` | `cuda-memory-benchmark/build/cuda_perf_suite` |
 | Moore Threads | `moore` | `bash build.sh --platform moore` | `cuda-memory-benchmark/build/cuda_perf_suite` |
+| Cambricon | `cambricon`, `mlu` | `bash build.sh` | `cambricon-memory-benchmark/build/mlu_perf_suite` |
 | Ascend | `ascend`, `npu` | `bash build.sh` | `ascend-memory-benchmark/build/npu_perf_suite` |
 
 Run each build command from its benchmark directory. All binaries use the same
@@ -45,9 +46,11 @@ example, Moore Threads STREAM uses:
 }
 ```
 
-The aliases `nvidia`, `musa`, `mthreads`, and `npu` are also accepted as
+The aliases `nvidia`, `musa`, `mthreads`, `mlu`, and `npu` are also accepted as
 explicit device values. A selected non-CUDA platform is recorded in the result
-configuration as `platform`. Ascend publishes all four STREAM operations: Copy
+configuration as `platform`. Cambricon NRAM bandwidth is published as
+`hardware.nram_bandwidth`; it is not relabeled as a CUDA L1 cache metric.
+Ascend publishes all four STREAM operations: Copy
 uses ACL D2D memcpy, Scale uses `aclnnMuls`, and Add/Triad use `aclnnAdd` with
 the corresponding scalar. Its ACL D2D memcpy size sweep is published as
 `hardware.d2d_memcpy_size_sweep` and does not claim to isolate AI Core memory
@@ -63,6 +66,7 @@ The selected physical device is renumbered to device 0 inside the process.
 | NVIDIA, MetaX, Iluvatar | `CUDA_VISIBLE_DEVICES` |
 | Hygon | `HIP_VISIBLE_DEVICES` and `ROCR_VISIBLE_DEVICES` |
 | Moore Threads | `MUSA_VISIBLE_DEVICES` |
+| Cambricon | `MLU_VISIBLE_DEVICES` |
 | Ascend | `ASCEND_RT_VISIBLE_DEVICES` |
 
 For example:
@@ -70,6 +74,7 @@ For example:
 ```bash
 CUDA_VISIBLE_DEVICES=2 ./build/cuda_perf_suite --stream --device 0
 MUSA_VISIBLE_DEVICES=0 ./build/cuda_perf_suite --stream --device 0
+MLU_VISIBLE_DEVICES=3 ./build/mlu_perf_suite --stream --device 0
 ASCEND_RT_VISIBLE_DEVICES=4 ./build/npu_perf_suite --stream --device 0
 ```
 
