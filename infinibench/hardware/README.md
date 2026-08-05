@@ -1,8 +1,8 @@
 # Hardware Benchmarks
 
-InfiniBench provides one hardware adapter for NVIDIA CUDA and four additional
-CUDA-compatible accelerator platforms. Existing CUDA command shapes and metric
-names are kept unchanged.
+InfiniBench provides one hardware adapter for NVIDIA CUDA and five additional
+accelerator platforms. Existing CUDA command shapes, behavior, and metric names
+are kept unchanged. Platform-specific tests use distinct metric names.
 
 ## Platforms
 
@@ -13,6 +13,7 @@ names are kept unchanged.
 | Iluvatar CoreX | `corex`, `iluvatar` | `bash build.sh --platform corex` | `cuda-memory-benchmark/build/cuda_perf_suite` |
 | Hygon DCU | `hygon` | `bash build.sh --platform hygon` | `cuda-memory-benchmark/build/cuda_perf_suite` |
 | Moore Threads | `moore` | `bash build.sh --platform moore` | `cuda-memory-benchmark/build/cuda_perf_suite` |
+| Ascend | `ascend`, `npu` | `bash build.sh` | `ascend-memory-benchmark/build/npu_perf_suite` |
 
 Run each build command from its benchmark directory. All binaries use the same
 test selectors and common arguments:
@@ -44,9 +45,13 @@ example, Moore Threads STREAM uses:
 }
 ```
 
-The aliases `nvidia`, `musa`, and `mthreads` are also accepted as explicit
-device values. A selected non-CUDA platform is recorded in the result
-configuration as `platform`; metric names remain compatible with CUDA results.
+The aliases `nvidia`, `musa`, `mthreads`, and `npu` are also accepted as
+explicit device values. A selected non-CUDA platform is recorded in the result
+configuration as `platform`. Ascend publishes all four STREAM operations: Copy
+uses ACL D2D memcpy, Scale uses `aclnnMuls`, and Add/Triad use `aclnnAdd` with
+the corresponding scalar. Its ACL D2D memcpy size sweep is published as
+`hardware.d2d_memcpy_size_sweep` and does not claim to isolate AI Core memory
+levels.
 
 ## Device Visibility
 
@@ -58,12 +63,14 @@ The selected physical device is renumbered to device 0 inside the process.
 | NVIDIA, MetaX, Iluvatar | `CUDA_VISIBLE_DEVICES` |
 | Hygon | `HIP_VISIBLE_DEVICES` and `ROCR_VISIBLE_DEVICES` |
 | Moore Threads | `MUSA_VISIBLE_DEVICES` |
+| Ascend | `ASCEND_RT_VISIBLE_DEVICES` |
 
 For example:
 
 ```bash
 CUDA_VISIBLE_DEVICES=2 ./build/cuda_perf_suite --stream --device 0
 MUSA_VISIBLE_DEVICES=0 ./build/cuda_perf_suite --stream --device 0
+ASCEND_RT_VISIBLE_DEVICES=4 ./build/npu_perf_suite --stream --device 0
 ```
 
 ## Container Notes
@@ -79,3 +86,8 @@ docker run --rm --privileged \
 
 Without this mount, management tools can list DCUs while HIP applications fail
 to load `libhsa-runtime64.so` or `libhydmi.so`.
+
+Some Ascend development images can return exit code 137 after the benchmark has
+printed its completion message. The adapter intentionally treats every nonzero
+exit code as a failure; fix the container lifecycle rather than suppressing that
+error in application code.
