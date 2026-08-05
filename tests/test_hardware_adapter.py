@@ -245,7 +245,7 @@ def test_dispatcher_does_not_register_devices_as_frameworks(device):
         Dispatcher()._create_adapter("hardware", device)
 
 
-def test_cambricon_cache_maps_to_existing_metric_names(tmp_path):
+def test_cambricon_nram_uses_platform_specific_metric_name(tmp_path):
     output = """
 NRAM Bandwidth Test (BANG Kernel)
 NRAM chunk/core       Time (ms)  Eff. BW (GB/s)      TFLOPS    Spread
@@ -263,7 +263,7 @@ data set     exec data      exec time     spread       Eff. bw
     metrics = adapter._parse_output(output, "Cache", "cam-run", "cambricon")
 
     assert [metric["name"] for metric in metrics] == [
-        "hardware.gpu_cache_l1",
+        "hardware.nram_bandwidth",
         "hardware.gpu_cache_l2",
     ]
 
@@ -312,6 +312,31 @@ def test_cambricon_uses_current_cnrt_success_enum():
 
     assert "cnrtSuccess" in source
     assert "CNRT_RET_SUCCESS" not in source
+
+
+def test_cambricon_nram_workload_and_read_volume_cover_every_core():
+    source = (
+        Path(hardware_adapter.__file__).parent
+        / "cambricon-memory-benchmark"
+        / "include"
+        / "cache_benchmark.h"
+    ).read_text(encoding="utf-8")
+
+    assert "size_t total_elements = chunk * total_cores;" in source
+    assert "(T*)dst, (const T*)src, total_elements" in source
+    assert "double data_volume = 4.0 * chunk_bytes;" in source
+
+
+def test_cambricon_bidirectional_copy_uses_distinct_host_buffers():
+    source = (
+        Path(hardware_adapter.__file__).parent
+        / "cambricon-memory-benchmark"
+        / "include"
+        / "memory_bandwidth_test.h"
+    ).read_text(encoding="utf-8")
+
+    assert "cnrtMemcpyAsync(dev1, host_src, bytes, q1" in source
+    assert "cnrtMemcpyAsync(host_dst, dev2, bytes, q2" in source
 
 
 def test_ascend_memory_buffers_match_largest_sweep_case():

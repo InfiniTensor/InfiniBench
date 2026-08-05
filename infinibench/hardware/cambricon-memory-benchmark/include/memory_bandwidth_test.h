@@ -16,16 +16,19 @@ public:
         cnrtQueue_t queue;
         MLU_CHECK(cnrtQueueCreate(&queue));
 
-        void* host_buf;
+        void* host_src;
+        void* host_dst;
         void* dev1;
         void* dev2;
-        MLU_CHECK(cnrtHostMalloc(&host_buf, max_bytes));
+        MLU_CHECK(cnrtHostMalloc(&host_src, max_bytes));
+        MLU_CHECK(cnrtHostMalloc(&host_dst, max_bytes));
         MLU_CHECK(cnrtMalloc(&dev1, max_bytes));
         MLU_CHECK(cnrtMalloc(&dev2, max_bytes));
 
-        memset(host_buf, 0xAB, max_bytes);
-        MLU_CHECK(cnrtMemcpy(dev1, host_buf, max_bytes, cnrtMemcpyHostToDev));
-        MLU_CHECK(cnrtMemcpy(dev2, host_buf, max_bytes, cnrtMemcpyHostToDev));
+        memset(host_src, 0xAB, max_bytes);
+        memset(host_dst, 0, max_bytes);
+        MLU_CHECK(cnrtMemcpy(dev1, host_src, max_bytes, cnrtMemcpyHostToDev));
+        MLU_CHECK(cnrtMemcpy(dev2, host_src, max_bytes, cnrtMemcpyHostToDev));
 
         std::vector<size_t> sizes_kb = {
             64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384,
@@ -51,7 +54,7 @@ public:
             if (bytes > max_bytes) break;
 
             for (int i = 0; i < warmup; ++i) {
-                MLU_CHECK(cnrtMemcpyAsync(dev1, host_buf, bytes, queue, cnrtMemcpyHostToDev));
+                MLU_CHECK(cnrtMemcpyAsync(dev1, host_src, bytes, queue, cnrtMemcpyHostToDev));
                 MLU_CHECK(cnrtQueueSync(queue));
             }
 
@@ -62,7 +65,7 @@ public:
                 MLU_CHECK(cnrtNotifierCreate(&ne));
 
                 MLU_CHECK(cnrtPlaceNotifier(ns, queue));
-                MLU_CHECK(cnrtMemcpyAsync(dev1, host_buf, bytes, queue, cnrtMemcpyHostToDev));
+                MLU_CHECK(cnrtMemcpyAsync(dev1, host_src, bytes, queue, cnrtMemcpyHostToDev));
                 MLU_CHECK(cnrtPlaceNotifier(ne, queue));
                 MLU_CHECK(cnrtQueueSync(queue));
 
@@ -97,7 +100,7 @@ public:
             if (bytes > max_bytes) break;
 
             for (int i = 0; i < warmup; ++i) {
-                MLU_CHECK(cnrtMemcpyAsync(host_buf, dev1, bytes, queue, cnrtMemcpyDevToHost));
+                MLU_CHECK(cnrtMemcpyAsync(host_dst, dev1, bytes, queue, cnrtMemcpyDevToHost));
                 MLU_CHECK(cnrtQueueSync(queue));
             }
 
@@ -108,7 +111,7 @@ public:
                 MLU_CHECK(cnrtNotifierCreate(&ne));
 
                 MLU_CHECK(cnrtPlaceNotifier(ns, queue));
-                MLU_CHECK(cnrtMemcpyAsync(host_buf, dev1, bytes, queue, cnrtMemcpyDevToHost));
+                MLU_CHECK(cnrtMemcpyAsync(host_dst, dev1, bytes, queue, cnrtMemcpyDevToHost));
                 MLU_CHECK(cnrtPlaceNotifier(ne, queue));
                 MLU_CHECK(cnrtQueueSync(queue));
 
@@ -195,8 +198,8 @@ public:
                 if (bytes > max_bytes) break;
 
                 for (int i = 0; i < warmup; ++i) {
-                    MLU_CHECK(cnrtMemcpyAsync(dev1, host_buf, bytes, q1, cnrtMemcpyHostToDev));
-                    MLU_CHECK(cnrtMemcpyAsync(host_buf, dev2, bytes, q2, cnrtMemcpyDevToHost));
+                    MLU_CHECK(cnrtMemcpyAsync(dev1, host_src, bytes, q1, cnrtMemcpyHostToDev));
+                    MLU_CHECK(cnrtMemcpyAsync(host_dst, dev2, bytes, q2, cnrtMemcpyDevToHost));
                     MLU_CHECK(cnrtQueueSync(q1));
                     MLU_CHECK(cnrtQueueSync(q2));
                 }
@@ -210,11 +213,11 @@ public:
                     MLU_CHECK(cnrtNotifierCreate(&ne2));
 
                     MLU_CHECK(cnrtPlaceNotifier(ns1, q1));
-                    MLU_CHECK(cnrtMemcpyAsync(dev1, host_buf, bytes, q1, cnrtMemcpyHostToDev));
+                    MLU_CHECK(cnrtMemcpyAsync(dev1, host_src, bytes, q1, cnrtMemcpyHostToDev));
                     MLU_CHECK(cnrtPlaceNotifier(ne1, q1));
 
                     MLU_CHECK(cnrtPlaceNotifier(ns2, q2));
-                    MLU_CHECK(cnrtMemcpyAsync(host_buf, dev2, bytes, q2, cnrtMemcpyDevToHost));
+                    MLU_CHECK(cnrtMemcpyAsync(host_dst, dev2, bytes, q2, cnrtMemcpyDevToHost));
                     MLU_CHECK(cnrtPlaceNotifier(ne2, q2));
 
                     MLU_CHECK(cnrtQueueSync(q1));
@@ -247,7 +250,8 @@ public:
             MLU_CHECK(cnrtQueueDestroy(q2));
         }
 
-        cnrtFreeHost(host_buf);
+        cnrtFreeHost(host_src);
+        cnrtFreeHost(host_dst);
         cnrtFree(dev1);
         cnrtFree(dev2);
         MLU_CHECK(cnrtQueueDestroy(queue));
