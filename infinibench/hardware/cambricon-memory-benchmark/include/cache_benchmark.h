@@ -8,11 +8,10 @@ namespace mlu_perf {
 #define ALIGN_CB 128
 
 // ============================================================
-// NRAM Bandwidth Kernel (对标 CUDA L1 Cache)
+// NRAM Bandwidth Kernel
 // ============================================================
-// 数据加载到 NRAM 后，用 __bang_add 反复做 NRAM 内的向量加。
-// 和 CUDA L1 测试对齐：只计 reads，用大量 repeat 放大时间。
-// 每个 __bang_add(dst, src0, src1, n) = 2 reads + 1 write
+// Load data into each core's explicitly managed NRAM, then repeatedly run
+// vector additions. Each __bang_add performs two reads and one write.
 
 template <typename T>
 __mlu_global__ void nram_add_kernel(T* dst, const T* src, size_t n,
@@ -47,7 +46,7 @@ __mlu_global__ void nram_add_kernel(T* dst, const T* src, size_t n,
 }
 
 // ============================================================
-// GDRAM<->NRAM Copy Kernel (用于 L2 Cache 测试)
+// GDRAM<->NRAM Copy Kernel (used by the L2 cache test)
 // ============================================================
 
 template <typename T>
@@ -76,7 +75,7 @@ __mlu_global__ void cache_rw_kernel(T* dst, const T* src, size_t n, int repeat) 
 }
 
 // ============================================================
-// NRAM Bandwidth Sweep Test (对标 CUDA L1 Cache Sweep)
+// NRAM Bandwidth Test
 // ============================================================
 
 class NRAMBandwidthTest {
@@ -106,11 +105,13 @@ public:
         std::cout << "Cores: " << total_cores << "\n";
         std::cout << "===================================================\n\n";
 
-        // Use max NRAM chunk: 2 buffers in 240KB → ~120KB each
+        // Use the maximum NRAM chunk: two buffers in 240 KB, about 120 KB each.
         size_t nram_bytes = NRAM_MAX_CB - ALIGN_CB;
         size_t chunk = nram_bytes / (2 * sizeof(T));
         chunk = (chunk / (ALIGN_CB / sizeof(T))) * (ALIGN_CB / sizeof(T));
         size_t chunk_bytes = chunk * sizeof(T);
+        size_t total_elements = chunk * total_cores;
+        size_t total_bytes = total_elements * sizeof(T);
 
         // Large repeat to amortize per-call overhead
         // Aligned with CUDA L1: ~1e9 / ARRAY_N + 2
@@ -118,8 +119,8 @@ public:
 
         void* src = nullptr;
         void* dst = nullptr;
-        MLU_CHECK(cnrtMalloc(&src, chunk_bytes));
-        MLU_CHECK(cnrtMalloc(&dst, chunk_bytes));
+        MLU_CHECK(cnrtMalloc(&src, total_bytes));
+        MLU_CHECK(cnrtMalloc(&dst, total_bytes));
 
         std::cout << "Chunk size per core: " << (chunk_bytes / 1024) << " kB\n";
         std::cout << "Repeat count: " << repeat_count << "\n\n";
@@ -127,7 +128,7 @@ public:
         // Warmup
         for (int i = 0; i < warmup; ++i) {
             nram_add_kernel<T><<<dim, k_type, queue>>>(
-                (T*)dst, (const T*)src, chunk, (int)repeat_count);
+                (T*)dst, (const T*)src, total_elements, (int)repeat_count);
             MLU_CHECK(cnrtQueueSync(queue));
         }
 
@@ -140,7 +141,7 @@ public:
 
             MLU_CHECK(cnrtPlaceNotifier(ns, queue));
             nram_add_kernel<T><<<dim, k_type, queue>>>(
-                (T*)dst, (const T*)src, chunk, (int)repeat_count);
+                (T*)dst, (const T*)src, total_elements, (int)repeat_count);
             MLU_CHECK(cnrtPlaceNotifier(ne, queue));
             MLU_CHECK(cnrtQueueSync(queue));
 
@@ -148,9 +149,8 @@ public:
             MLU_CHECK(cnrtNotifierDuration(ns, ne, &us));
             double sec = us / 1e6;
 
-            // Aligned with CUDA L1: data_volume × grid_count × repeat_count / time
-            // data_volume = 2 reads × chunk_bytes per iter
-            double data_volume = 2.0 * chunk_bytes;
+            // Two __bang_add calls per repeat, each reading two NRAM inputs.
+            double data_volume = 4.0 * chunk_bytes;
             double total_bw = data_volume * total_cores * repeat_count / sec / 1e9;
             bw_metrics.add(total_bw);
 
@@ -159,7 +159,7 @@ public:
         }
 
         double avg_bw = bw_metrics.trimmed_mean();
-        double avg_time_sec = (2.0 * chunk_bytes * total_cores * repeat_count / 1e9)
+        double avg_time_sec = (4.0 * chunk_bytes * total_cores * repeat_count / 1e9)
                               / avg_bw;
 
         // Also compute TFLOPS: 2 adds per iter, each is 1 FLOP per element
@@ -191,7 +191,7 @@ public:
 };
 
 // ============================================================
-// L2 Cache Bandwidth Sweep Test (对标 CUDA L2 Cache Sweep)
+// L2 Cache Bandwidth Sweep Test
 // ============================================================
 
 class L2CacheBandwidthTest {
@@ -233,7 +233,7 @@ public:
 
         // Sweep from 256KB to 128MB
         // L2 is ~40MB, so <40MB should show high bandwidth (L2 hit)
-        // >40MB should show lower bandwidth (L2 miss → DRAM)
+        // Data sets larger than L2 should show lower DRAM-backed bandwidth.
         std::vector<size_t> sizes_kb;
         for (size_t s = 256; s <= 8192; s *= 2) sizes_kb.push_back(s);
         for (size_t s = 10240; s <= 65536; s += 4096) sizes_kb.push_back(s);

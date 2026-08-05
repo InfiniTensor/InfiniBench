@@ -420,7 +420,7 @@ class HardwareTestAdapter(BaseAdapter):
         ]
 
     def _parse_cambricon_cache(self, output: str, run_id: str) -> List[Dict]:
-        """Map Cambricon NRAM and L2 results to the existing cache schema."""
+        """Parse Cambricon NRAM and L2 results without conflating their levels."""
         metrics = []
         nram_match = re.search(
             r"NRAM Bandwidth Test.*?Spread\s*-+\s*\n(.*?)(?=\n\s*=+|" r"\nL2 Cache|\Z)",
@@ -447,9 +447,9 @@ class HardwareTestAdapter(BaseAdapter):
             if rows:
                 metrics.append(
                     self._create_timeseries_metric(
-                        "hardware.gpu_cache_l1",
+                        "hardware.nram_bandwidth",
                         rows,
-                        f"cache_l1_bandwidth_{run_id}",
+                        f"nram_bandwidth_{run_id}",
                         L1_CACHE_CSV_FIELDS,
                     )
                 )
