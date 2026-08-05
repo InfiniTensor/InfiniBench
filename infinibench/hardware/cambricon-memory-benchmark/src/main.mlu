@@ -1,0 +1,124 @@
+#include <iostream>
+#include <string>
+#include "cnrt_utils.h"
+#include "memory_bandwidth_test.h"
+#include "stream_benchmark.h"
+#include "cache_benchmark.h"
+
+using namespace mlu_perf;
+
+void print_banner() {
+    std::cout << R"(
+================================================================
+        MLU Performance Benchmark Suite v1.0
+        Cambricon Memory & Cache Testing
+================================================================
+)" << std::endl;
+}
+
+void print_usage(const char* prog) {
+    std::cout << "Usage: " << prog << " [OPTIONS]\n\n"
+              << "Options:\n"
+              << "  --all              Run all tests (default)\n"
+              << "  --memory           Run memory bandwidth tests only\n"
+              << "  --stream           Run STREAM benchmark only\n"
+              << "  --cache            Run NRAM + L2 cache tests\n"
+              << "  --nram             Run NRAM bandwidth test only\n"
+              << "  --l2cache          Run L2 cache bandwidth test only\n"
+              << "  --device <id>      Specify MLU device ID (default: 0)\n"
+              << "  --iterations <n>   Number of measurement iterations (default: 10)\n"
+              << "  --array-size <n>   Array size for STREAM test (default: 67108864)\n"
+              << "  --help             Show this help\n";
+}
+
+struct Config {
+    bool run_all = true;
+    bool run_memory = false;
+    bool run_stream = false;
+    bool run_cache = false;
+    bool run_nram = false;
+    bool run_l2cache = false;
+    int device_id = 0;
+    int iterations = 10;
+    size_t array_size = 67108864;
+};
+
+Config parse_args(int argc, char* argv[]) {
+    Config cfg;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--help" || arg == "-h") { print_usage(argv[0]); exit(0); }
+        else if (arg == "--all") { cfg.run_all = true; }
+        else if (arg == "--memory") { cfg.run_all = false; cfg.run_memory = true; }
+        else if (arg == "--stream") { cfg.run_all = false; cfg.run_stream = true; }
+        else if (arg == "--cache") { cfg.run_all = false; cfg.run_cache = true; }
+        else if (arg == "--nram") { cfg.run_all = false; cfg.run_nram = true; }
+        else if (arg == "--l2cache") { cfg.run_all = false; cfg.run_l2cache = true; }
+        else if (arg == "--device" && i + 1 < argc) { cfg.device_id = std::atoi(argv[++i]); }
+        else if (arg == "--iterations" && i + 1 < argc) { cfg.iterations = std::atoi(argv[++i]); }
+        else if (arg == "--array-size" && i + 1 < argc) { cfg.array_size = std::atoll(argv[++i]); }
+        else { std::cerr << "Unknown option: " << arg << "\n"; print_usage(argv[0]); exit(1); }
+    }
+    return cfg;
+}
+
+int main(int argc, char* argv[]) {
+    try {
+        print_banner();
+        Config cfg = parse_args(argc, argv);
+
+        // System info
+        std::cout << "=== System Information ===\n";
+        int dev_count = get_device_count();
+        std::cout << "MLU Devices: " << dev_count << "\n";
+        for (int i = 0; i < dev_count; ++i) {
+            std::cout << "\n";
+            MluDeviceInfo::print(i);
+        }
+        std::cout << "\n";
+
+        if (cfg.device_id >= dev_count) {
+            std::cerr << "Error: Device ID " << cfg.device_id << " not available\n";
+            return 1;
+        }
+        MLU_CHECK(cnrtSetDevice(cfg.device_id));
+
+        TestConfig tc;
+        tc.warmup_iterations = 5;
+        tc.measure_iterations = cfg.iterations;
+        tc.device_id = cfg.device_id;
+
+        std::cout << "=== Test Configuration ===\n"
+                  << "Device ID:         " << cfg.device_id << "\n"
+                  << "Iterations:        " << cfg.iterations << "\n"
+                  << "Stream array size: " << cfg.array_size
+                  << " elements (" << cfg.array_size * sizeof(float) / 1024.0 / 1024.0 << " MB)\n";
+
+        if (cfg.run_all || cfg.run_memory) {
+            MemoryBandwidthTest test;
+            test.execute(tc);
+        }
+
+        if (cfg.run_all || cfg.run_stream) {
+            StreamBenchmarkTest test;
+            test.execute(cfg.array_size, tc);
+        }
+
+        if (cfg.run_all || cfg.run_cache || cfg.run_nram) {
+            NRAMBandwidthTest test;
+            test.execute(tc);
+        }
+
+        if (cfg.run_all || cfg.run_cache || cfg.run_l2cache) {
+            L2CacheBandwidthTest test;
+            test.execute(tc);
+        }
+
+        std::cout << "\nAll tests completed successfully.\n\n";
+        return 0;
+
+    } catch (const std::exception& e) {
+        std::cerr << "\nERROR: " << e.what() << "\n";
+        return 1;
+    }
+}

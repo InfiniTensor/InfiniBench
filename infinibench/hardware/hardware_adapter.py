@@ -39,6 +39,8 @@ def detect_platform() -> str:
         or Path("/usr/local/Ascend/ascend-toolkit").exists()
     ):
         return "ascend"
+    if shutil.which("cncc") or Path("/usr/local/neuware").exists():
+        return "cambricon"
     if shutil.which("mcc") or shutil.which("mthreads-gmi"):
         return "moore"
 
@@ -390,6 +392,8 @@ class HardwareTestAdapter(BaseAdapter):
     ) -> List[Dict]:
         if parser_name == "ascend":
             return self._parse_ascend_d2d_size_sweep(output, run_id)
+        if parser_name == "cambricon":
+            return self._parse_cambricon_cache(output, run_id)
         if parser_name == "cuda":
             return self._parse_cache_bandwidth(output, run_id)
         raise ValueError(f"Unknown cache parser: {parser_name}")
@@ -414,6 +418,59 @@ class HardwareTestAdapter(BaseAdapter):
                 L2_CACHE_CSV_FIELDS,
             )
         ]
+
+    def _parse_cambricon_cache(self, output: str, run_id: str) -> List[Dict]:
+        """Map Cambricon NRAM and L2 results to the existing cache schema."""
+        metrics = []
+        nram_match = re.search(
+            r"NRAM Bandwidth Test.*?Spread\s*-+\s*\n(.*?)(?=\n\s*=+|" r"\nL2 Cache|\Z)",
+            output,
+            re.DOTALL,
+        )
+        if nram_match:
+            rows = []
+            for line in nram_match.group(1).strip().splitlines():
+                parts = line.split()
+                if len(parts) >= 6:
+                    try:
+                        rows.append(
+                            {
+                                "data_set": f"{parts[0]} {parts[1]}",
+                                "_sort_key": float(parts[0]),
+                                "exec_time": parts[2],
+                                "spread": parts[5],
+                                "eff_bw": float(parts[3]),
+                            }
+                        )
+                    except (ValueError, IndexError):
+                        pass
+            if rows:
+                metrics.append(
+                    self._create_timeseries_metric(
+                        "hardware.gpu_cache_l1",
+                        rows,
+                        f"cache_l1_bandwidth_{run_id}",
+                        L1_CACHE_CSV_FIELDS,
+                    )
+                )
+
+        l2_match = re.search(
+            r"L2 Cache Bandwidth Sweep Test.*?Eff\. bw\s*-+\s*\n(.*?)(?=\Z)",
+            output,
+            re.DOTALL,
+        )
+        if l2_match:
+            rows = self._parse_cache_lines(l2_match.group(1), "l2")
+            if rows:
+                metrics.append(
+                    self._create_timeseries_metric(
+                        "hardware.gpu_cache_l2",
+                        rows,
+                        f"cache_l2_bandwidth_{run_id}",
+                        L2_CACHE_CSV_FIELDS,
+                    )
+                )
+        return metrics
 
     def _parse_cache_bandwidth(self, output: str, run_id: str) -> List[Dict]:
         """Parse the existing CUDA L1 and L2 cache output."""

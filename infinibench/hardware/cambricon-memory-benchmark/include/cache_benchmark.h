@@ -1,0 +1,306 @@
+#pragma once
+
+#include "cnrt_utils.h"
+
+namespace mlu_perf {
+
+#define NRAM_MAX_CB (1024 * 240)
+#define ALIGN_CB 128
+
+// ============================================================
+// NRAM Bandwidth Kernel (对标 CUDA L1 Cache)
+// ============================================================
+// 数据加载到 NRAM 后，用 __bang_add 反复做 NRAM 内的向量加。
+// 和 CUDA L1 测试对齐：只计 reads，用大量 repeat 放大时间。
+// 每个 __bang_add(dst, src0, src1, n) = 2 reads + 1 write
+
+template <typename T>
+__mlu_global__ void nram_add_kernel(T* dst, const T* src, size_t n,
+                                    int repeat) {
+    __nram__ char nram_raw[NRAM_MAX_CB];
+    char* aligned = (char*)(((size_t)nram_raw + ALIGN_CB - 1) & ~(ALIGN_CB - 1));
+    size_t usable = NRAM_MAX_CB - (aligned - nram_raw);
+    // 2 buffers: input + output
+    size_t chunk = usable / (2 * sizeof(T));
+    chunk = (chunk / (ALIGN_CB / sizeof(T))) * (ALIGN_CB / sizeof(T));
+    if (chunk == 0) return;
+
+    T* buf_a = (T*)aligned;
+    T* buf_b = buf_a + chunk;
+
+    size_t per_core = (n + taskDim - 1) / taskDim;
+    size_t start = taskId * per_core;
+    size_t end = start + per_core > n ? n : start + per_core;
+    if (start >= end) return;
+
+    size_t cnt = end - start;
+    if (cnt > chunk) cnt = chunk;
+    __memcpy(buf_a, src + start, cnt * sizeof(T), GDRAM2NRAM);
+
+    // Repeat __bang_add alternating between two buffers
+    for (int r = 0; r < repeat; r++) {
+        __bang_add(buf_b, buf_a, buf_a, cnt);
+        __bang_add(buf_a, buf_b, buf_b, cnt);
+    }
+
+    __memcpy(dst + start, buf_a, cnt * sizeof(T), NRAM2GDRAM);
+}
+
+// ============================================================
+// GDRAM<->NRAM Copy Kernel (用于 L2 Cache 测试)
+// ============================================================
+
+template <typename T>
+__mlu_global__ void cache_rw_kernel(T* dst, const T* src, size_t n, int repeat) {
+    __nram__ char nram_raw[NRAM_MAX_CB];
+    char* aligned = (char*)(((size_t)nram_raw + ALIGN_CB - 1) & ~(ALIGN_CB - 1));
+    size_t usable = NRAM_MAX_CB - (aligned - nram_raw);
+    size_t chunk = usable / sizeof(T);
+    chunk = (chunk / (ALIGN_CB / sizeof(T))) * (ALIGN_CB / sizeof(T));
+    if (chunk == 0) return;
+
+    T* buf = (T*)aligned;
+
+    size_t per_core = (n + taskDim - 1) / taskDim;
+    size_t start = taskId * per_core;
+    size_t end = start + per_core > n ? n : start + per_core;
+    if (start >= end) return;
+
+    for (int r = 0; r < repeat; r++) {
+        for (size_t off = start; off < end; off += chunk) {
+            size_t c = off + chunk > end ? end - off : chunk;
+            __memcpy(buf, src + off, c * sizeof(T), GDRAM2NRAM);
+            __memcpy(dst + off, buf, c * sizeof(T), NRAM2GDRAM);
+        }
+    }
+}
+
+// ============================================================
+// NRAM Bandwidth Sweep Test (对标 CUDA L1 Cache Sweep)
+// ============================================================
+
+class NRAMBandwidthTest {
+public:
+    void execute(const TestConfig& cfg = TestConfig()) {
+        MLU_CHECK(cnrtSetDevice(cfg.device_id));
+
+        cnrtQueue_t queue;
+        MLU_CHECK(cnrtQueueCreate(&queue));
+
+        cnrtDeviceProp_t prop;
+        MLU_CHECK(cnrtGetDeviceProperties(&prop, cfg.device_id));
+        int total_cores = prop.clusterCount * prop.McorePerCluster;
+
+        cnrtDim3_t dim;
+        dim.x = prop.McorePerCluster;
+        dim.y = prop.clusterCount;
+        dim.z = 1;
+        cnrtFunctionType_t k_type = cnrtFuncTypeUnion1;
+
+        using T = float;
+        int warmup = cfg.warmup_iterations;
+        int measure = cfg.measure_iterations;
+
+        std::cout << "\n===================================================\n";
+        std::cout << "NRAM Bandwidth Test (BANG Kernel)\n";
+        std::cout << "Cores: " << total_cores << "\n";
+        std::cout << "===================================================\n\n";
+
+        // Use max NRAM chunk: 2 buffers in 240KB → ~120KB each
+        size_t nram_bytes = NRAM_MAX_CB - ALIGN_CB;
+        size_t chunk = nram_bytes / (2 * sizeof(T));
+        chunk = (chunk / (ALIGN_CB / sizeof(T))) * (ALIGN_CB / sizeof(T));
+        size_t chunk_bytes = chunk * sizeof(T);
+
+        // Large repeat to amortize per-call overhead
+        // Aligned with CUDA L1: ~1e9 / ARRAY_N + 2
+        size_t repeat_count = 1000000000ULL / chunk + 2;
+
+        void* src = nullptr;
+        void* dst = nullptr;
+        MLU_CHECK(cnrtMalloc(&src, chunk_bytes));
+        MLU_CHECK(cnrtMalloc(&dst, chunk_bytes));
+
+        std::cout << "Chunk size per core: " << (chunk_bytes / 1024) << " kB\n";
+        std::cout << "Repeat count: " << repeat_count << "\n\n";
+
+        // Warmup
+        for (int i = 0; i < warmup; ++i) {
+            nram_add_kernel<T><<<dim, k_type, queue>>>(
+                (T*)dst, (const T*)src, chunk, (int)repeat_count);
+            MLU_CHECK(cnrtQueueSync(queue));
+        }
+
+        // Measure
+        PerfMetrics bw_metrics;
+        for (int i = 0; i < measure; ++i) {
+            cnrtNotifier_t ns, ne;
+            MLU_CHECK(cnrtNotifierCreate(&ns));
+            MLU_CHECK(cnrtNotifierCreate(&ne));
+
+            MLU_CHECK(cnrtPlaceNotifier(ns, queue));
+            nram_add_kernel<T><<<dim, k_type, queue>>>(
+                (T*)dst, (const T*)src, chunk, (int)repeat_count);
+            MLU_CHECK(cnrtPlaceNotifier(ne, queue));
+            MLU_CHECK(cnrtQueueSync(queue));
+
+            float us;
+            MLU_CHECK(cnrtNotifierDuration(ns, ne, &us));
+            double sec = us / 1e6;
+
+            // Aligned with CUDA L1: data_volume × grid_count × repeat_count / time
+            // data_volume = 2 reads × chunk_bytes per iter
+            double data_volume = 2.0 * chunk_bytes;
+            double total_bw = data_volume * total_cores * repeat_count / sec / 1e9;
+            bw_metrics.add(total_bw);
+
+            MLU_CHECK(cnrtNotifierDestroy(ns));
+            MLU_CHECK(cnrtNotifierDestroy(ne));
+        }
+
+        double avg_bw = bw_metrics.trimmed_mean();
+        double avg_time_sec = (2.0 * chunk_bytes * total_cores * repeat_count / 1e9)
+                              / avg_bw;
+
+        // Also compute TFLOPS: 2 adds per iter, each is 1 FLOP per element
+        double total_flops = 2.0 * chunk * total_cores * repeat_count;
+        double tflops = total_flops / avg_time_sec / 1e12;
+
+        std::cout << std::left << std::setw(20) << "NRAM chunk/core"
+                  << std::right << std::setw(12) << "Time (ms)"
+                  << std::setw(15) << "Eff. BW (GB/s)"
+                  << std::setw(12) << "TFLOPS"
+                  << std::setw(10) << "Spread\n";
+        std::cout << std::string(69, '-') << "\n";
+
+        std::cout << std::fixed << std::setprecision(1);
+        std::cout << std::left << std::setw(20)
+                  << std::to_string(chunk_bytes / 1024) + " kB";
+        std::cout << std::right << std::setw(12) << std::setprecision(1)
+                  << avg_time_sec * 1000;
+        std::cout << std::setw(15) << std::setprecision(1) << avg_bw;
+        std::cout << std::setw(12) << std::setprecision(1) << tflops;
+        std::cout << std::setw(10) << std::setprecision(1)
+                  << (bw_metrics.cv() * 100.0) << "%\n";
+
+        cnrtFree(src);
+        cnrtFree(dst);
+        MLU_CHECK(cnrtQueueDestroy(queue));
+        std::cout << "\n";
+    }
+};
+
+// ============================================================
+// L2 Cache Bandwidth Sweep Test (对标 CUDA L2 Cache Sweep)
+// ============================================================
+
+class L2CacheBandwidthTest {
+public:
+    void execute(const TestConfig& cfg = TestConfig()) {
+        MLU_CHECK(cnrtSetDevice(cfg.device_id));
+
+        cnrtQueue_t queue;
+        MLU_CHECK(cnrtQueueCreate(&queue));
+
+        cnrtDeviceProp_t prop;
+        MLU_CHECK(cnrtGetDeviceProperties(&prop, cfg.device_id));
+        int total_cores = prop.clusterCount * prop.McorePerCluster;
+        size_t l2_bytes = prop.maxL2CacheSize;
+
+        cnrtDim3_t dim;
+        dim.x = prop.McorePerCluster;
+        dim.y = prop.clusterCount;
+        dim.z = 1;
+        cnrtFunctionType_t k_type = cnrtFuncTypeUnion1;
+
+        using T = float;
+        const int repeat = 10;
+        int warmup = cfg.warmup_iterations;
+        int measure = cfg.measure_iterations;
+
+        std::cout << "\n===================================================\n";
+        std::cout << "L2 Cache Bandwidth Sweep Test (BANG Kernel)\n";
+        std::cout << "Cores: " << total_cores
+                  << ", L2 Cache: " << (l2_bytes / 1024) << " kB\n";
+        std::cout << "===================================================\n\n";
+
+        std::cout << std::left << std::setw(13) << "data set"
+                  << std::setw(12) << "exec data"
+                  << std::right << std::setw(12) << "exec time"
+                  << std::setw(11) << "spread"
+                  << std::setw(15) << "Eff. bw\n";
+        std::cout << std::string(63, '-') << "\n";
+
+        // Sweep from 256KB to 128MB
+        // L2 is ~40MB, so <40MB should show high bandwidth (L2 hit)
+        // >40MB should show lower bandwidth (L2 miss → DRAM)
+        std::vector<size_t> sizes_kb;
+        for (size_t s = 256; s <= 8192; s *= 2) sizes_kb.push_back(s);
+        for (size_t s = 10240; s <= 65536; s += 4096) sizes_kb.push_back(s);
+        for (size_t s = 65536; s <= 131072; s *= 2) sizes_kb.push_back(s);
+
+        size_t max_bytes = 256ULL * 1024 * 1024;
+        void* src = nullptr;
+        void* dst = nullptr;
+        MLU_CHECK(cnrtMalloc(&src, max_bytes));
+        MLU_CHECK(cnrtMalloc(&dst, max_bytes));
+
+        for (size_t skb : sizes_kb) {
+            size_t bytes = skb * 1024;
+            if (bytes > max_bytes) break;
+            size_t n = bytes / sizeof(T);
+
+            // Warmup
+            for (int i = 0; i < warmup; ++i) {
+                cache_rw_kernel<T><<<dim, k_type, queue>>>(
+                    (T*)dst, (const T*)src, n, repeat);
+                MLU_CHECK(cnrtQueueSync(queue));
+            }
+
+            // Measure
+            PerfMetrics time_metrics;
+            for (int i = 0; i < measure; ++i) {
+                cnrtNotifier_t ns, ne;
+                MLU_CHECK(cnrtNotifierCreate(&ns));
+                MLU_CHECK(cnrtNotifierCreate(&ne));
+
+                MLU_CHECK(cnrtPlaceNotifier(ns, queue));
+                cache_rw_kernel<T><<<dim, k_type, queue>>>(
+                    (T*)dst, (const T*)src, n, repeat);
+                MLU_CHECK(cnrtPlaceNotifier(ne, queue));
+                MLU_CHECK(cnrtQueueSync(queue));
+
+                float us;
+                MLU_CHECK(cnrtNotifierDuration(ns, ne, &us));
+                time_metrics.add(us / 1e3);  // ms
+
+                MLU_CHECK(cnrtNotifierDestroy(ns));
+                MLU_CHECK(cnrtNotifierDestroy(ne));
+            }
+
+            double avg_time_ms = time_metrics.trimmed_mean();
+            double total_data = 2.0 * bytes * repeat;
+            double bw_gbps = total_data / (avg_time_ms / 1e3) / 1e9;
+
+            std::cout << std::fixed << std::setprecision(0);
+            std::cout << std::left << std::setw(13)
+                      << std::to_string(bytes / 1024) + " kB";
+            std::cout << std::setw(12)
+                      << std::to_string(bytes * repeat / 1024) + " kB";
+            std::cout << std::right << std::setw(12)
+                      << std::setprecision(0) << avg_time_ms << "ms";
+            std::cout << std::setprecision(1) << std::setw(11)
+                      << (time_metrics.cv() * 100.0) << "%";
+            std::cout << std::setprecision(1) << std::setw(15)
+                      << bw_gbps << " GB/s";
+            std::cout << "\n";
+        }
+
+        cnrtFree(src);
+        cnrtFree(dst);
+        MLU_CHECK(cnrtQueueDestroy(queue));
+        std::cout << "\n";
+    }
+};
+
+} // namespace mlu_perf

@@ -11,6 +11,8 @@ PLATFORM_ALIASES = {
     "moore": "moore",
     "mthreads": "moore",
     "musa": "moore",
+    "cambricon": "cambricon",
+    "mlu": "cambricon",
     "ascend": "ascend",
     "npu": "ascend",
 }
@@ -45,6 +47,12 @@ PLATFORM_CONFIGS = {
         "benchmark_subdir": "cuda-memory-benchmark",
         "build_platform": "moore",
         "cache_parser": "cuda",
+    },
+    "cambricon": {
+        "binary_name": "mlu_perf_suite",
+        "benchmark_subdir": "cambricon-memory-benchmark",
+        "build_platform": None,
+        "cache_parser": "cambricon",
     },
     "ascend": {
         "binary_name": "npu_perf_suite",
