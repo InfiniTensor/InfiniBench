@@ -339,6 +339,18 @@ def test_cambricon_bidirectional_copy_uses_distinct_host_buffers():
     assert "cnrtMemcpyAsync(host_dst, dev2, bytes, q2" in source
 
 
+def test_cambricon_bandwidth_buffers_match_largest_sweep_case():
+    source = (
+        Path(hardware_adapter.__file__).parent
+        / "cambricon-memory-benchmark"
+        / "include"
+        / "memory_bandwidth_test.h"
+    ).read_text(encoding="utf-8")
+
+    assert "const size_t max_bytes = sizes_kb.back() * 1024;" in source
+    assert "2ULL * 1024 * 1024 * 1024" not in source
+
+
 def test_ascend_memory_buffers_match_largest_sweep_case():
     source = (
         Path(hardware_adapter.__file__).parent
@@ -415,3 +427,18 @@ def test_ascend_bidirectional_copy_uses_distinct_host_buffers():
 
     assert "dev1.data(), max_bytes, host_src.data()" in source
     assert "host_dst.data(), max_bytes, dev2.data()" in source
+
+
+def test_cambricon_cmake_uses_cncc_as_the_compiler():
+    source = (
+        Path(hardware_adapter.__file__).parent
+        / "cambricon-memory-benchmark"
+        / "CMakeLists.txt"
+    ).read_text(encoding="utf-8")
+
+    assert 'set(CMAKE_CXX_COMPILER "${CNCC}")' in source
+    assert (
+        "target_link_libraries(mlu_perf_suite ${CNRT_LIB} stdc++ m pthread)" in source
+    )
+    assert "CXX_COMPILER_LAUNCHER" not in source
+    assert "RULE_LAUNCH_COMPILE" not in source
