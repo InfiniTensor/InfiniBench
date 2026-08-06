@@ -9,7 +9,11 @@ public:
     void execute(const TestConfig& cfg = TestConfig()) {
         MLU_CHECK(cnrtSetDevice(cfg.device_id));
 
-        const size_t max_bytes = 2ULL * 1024 * 1024 * 1024;  // 2 GB
+        const std::vector<size_t> sizes_kb = {
+            64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384,
+            32768, 65536, 131072, 262144, 524288, 1048576
+        };
+        const size_t max_bytes = sizes_kb.back() * 1024;
         const int warmup = cfg.warmup_iterations;
         const int measure = cfg.measure_iterations;
 
@@ -29,11 +33,6 @@ public:
         memset(host_dst, 0, max_bytes);
         MLU_CHECK(cnrtMemcpy(dev1, host_src, max_bytes, cnrtMemcpyHostToDev));
         MLU_CHECK(cnrtMemcpy(dev2, host_src, max_bytes, cnrtMemcpyHostToDev));
-
-        std::vector<size_t> sizes_kb = {
-            64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384,
-            32768, 65536, 131072, 262144, 524288, 1048576
-        };
 
         auto print_table_header = [&]() {
             std::cout << std::left << std::setw(15) << "Size (MB)"
