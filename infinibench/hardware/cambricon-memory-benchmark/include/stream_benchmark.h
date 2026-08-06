@@ -1,26 +1,20 @@
 #pragma once
 
 #include "cnrt_utils.h"
+#include "nram_utils.h"
 #include <cstring>
 
 namespace mlu_perf {
-
-// NRAM: 240KB per core, single buffer manually partitioned
-#define NRAM_MAX (1024 * 240)
-#define ALIGN 128
 
 // ---- init kernel ----
 template <typename T>
 __mlu_global__ void init_kernel(T* a, T* b, T* c, size_t n,
                                  T va, T vb, T vc) {
-    __nram__ char nram_raw[NRAM_MAX];
-    char* aligned = (char*)(((size_t)nram_raw + ALIGN - 1) & ~(ALIGN - 1));
-    size_t usable = NRAM_MAX - (aligned - nram_raw);
-    size_t chunk = usable / (3 * sizeof(T));
-    chunk = (chunk / (ALIGN / sizeof(T))) * (ALIGN / sizeof(T));
+    __nram__ char nram_raw[kNramBytes];
+    T* na;
+    size_t chunk = prepare_nram_layout<T>(nram_raw, 3, &na);
     if (chunk == 0) return;
 
-    T* na = (T*)aligned;
     T* nb = na + chunk;
     T* nc = nb + chunk;
 
@@ -42,14 +36,10 @@ __mlu_global__ void init_kernel(T* a, T* b, T* c, size_t n,
 // ---- STREAM Copy: dst[i] = src[i]  (2 * N * sizeof(T) bytes moved) ----
 template <typename T>
 __mlu_global__ void stream_copy_kernel(T* dst, const T* src, size_t n) {
-    __nram__ char nram_raw[NRAM_MAX];
-    char* aligned = (char*)(((size_t)nram_raw + ALIGN - 1) & ~(ALIGN - 1));
-    size_t usable = NRAM_MAX - (aligned - nram_raw);
-    size_t chunk = usable / sizeof(T);
-    chunk = (chunk / (ALIGN / sizeof(T))) * (ALIGN / sizeof(T));
+    __nram__ char nram_raw[kNramBytes];
+    T* buf;
+    size_t chunk = prepare_nram_layout<T>(nram_raw, 1, &buf);
     if (chunk == 0) return;
-
-    T* buf = (T*)aligned;
 
     size_t per_core = (n + taskDim - 1) / taskDim;
     size_t start = taskId * per_core;
@@ -65,14 +55,11 @@ __mlu_global__ void stream_copy_kernel(T* dst, const T* src, size_t n) {
 // ---- STREAM Scale: dst[i] = scalar * src[i]  (2 * N * sizeof(T)) ----
 template <typename T>
 __mlu_global__ void stream_scale_kernel(T* dst, const T* src, T scalar, size_t n) {
-    __nram__ char nram_raw[NRAM_MAX];
-    char* aligned = (char*)(((size_t)nram_raw + ALIGN - 1) & ~(ALIGN - 1));
-    size_t usable = NRAM_MAX - (aligned - nram_raw);
-    size_t chunk = usable / (2 * sizeof(T));
-    chunk = (chunk / (ALIGN / sizeof(T))) * (ALIGN / sizeof(T));
+    __nram__ char nram_raw[kNramBytes];
+    T* ns;
+    size_t chunk = prepare_nram_layout<T>(nram_raw, 2, &ns);
     if (chunk == 0) return;
 
-    T* ns = (T*)aligned;
     T* nd = ns + chunk;
 
     size_t per_core = (n + taskDim - 1) / taskDim;
@@ -90,14 +77,11 @@ __mlu_global__ void stream_scale_kernel(T* dst, const T* src, T scalar, size_t n
 // ---- STREAM Add: dst[i] = src1[i] + src2[i]  (3 * N * sizeof(T)) ----
 template <typename T>
 __mlu_global__ void stream_add_kernel(T* dst, const T* src1, const T* src2, size_t n) {
-    __nram__ char nram_raw[NRAM_MAX];
-    char* aligned = (char*)(((size_t)nram_raw + ALIGN - 1) & ~(ALIGN - 1));
-    size_t usable = NRAM_MAX - (aligned - nram_raw);
-    size_t chunk = usable / (3 * sizeof(T));
-    chunk = (chunk / (ALIGN / sizeof(T))) * (ALIGN / sizeof(T));
+    __nram__ char nram_raw[kNramBytes];
+    T* na;
+    size_t chunk = prepare_nram_layout<T>(nram_raw, 3, &na);
     if (chunk == 0) return;
 
-    T* na = (T*)aligned;
     T* nb = na + chunk;
     T* nc = nb + chunk;
 
@@ -118,14 +102,11 @@ __mlu_global__ void stream_add_kernel(T* dst, const T* src1, const T* src2, size
 template <typename T>
 __mlu_global__ void stream_triad_kernel(T* dst, const T* src1, const T* src2,
                                          T scalar, size_t n) {
-    __nram__ char nram_raw[NRAM_MAX];
-    char* aligned = (char*)(((size_t)nram_raw + ALIGN - 1) & ~(ALIGN - 1));
-    size_t usable = NRAM_MAX - (aligned - nram_raw);
-    size_t chunk = usable / (3 * sizeof(T));
-    chunk = (chunk / (ALIGN / sizeof(T))) * (ALIGN / sizeof(T));
+    __nram__ char nram_raw[kNramBytes];
+    T* na;
+    size_t chunk = prepare_nram_layout<T>(nram_raw, 3, &na);
     if (chunk == 0) return;
 
-    T* na = (T*)aligned;
     T* nb = na + chunk;
     T* nc = nb + chunk;
 
@@ -188,10 +169,9 @@ public:
         struct Result { std::string name; double bw; double ms; double cv; };
         std::vector<Result> results;
 
-        // --- STREAM Copy ---
-        {
+        auto benchmark = [&](const char* name, double bytes, auto&& launch) {
             for (int i = 0; i < warmup; ++i) {
-                stream_copy_kernel<T><<<dim, k_type, queue>>>(d_c, d_b, array_size);
+                launch();
                 MLU_CHECK(cnrtQueueSync(queue));
             }
             PerfMetrics bw_m;
@@ -200,101 +180,41 @@ public:
                 MLU_CHECK(cnrtNotifierCreate(&ns));
                 MLU_CHECK(cnrtNotifierCreate(&ne));
                 MLU_CHECK(cnrtPlaceNotifier(ns, queue));
-                stream_copy_kernel<T><<<dim, k_type, queue>>>(d_c, d_b, array_size);
+                launch();
                 MLU_CHECK(cnrtPlaceNotifier(ne, queue));
                 MLU_CHECK(cnrtQueueSync(queue));
                 float us;
                 MLU_CHECK(cnrtNotifierDuration(ns, ne, &us));
-                bw_m.add(((double)2 * sizeof(T) * array_size / 1e9) / (us / 1e6));
+                bw_m.add((bytes / 1e9) / (us / 1e6));
                 MLU_CHECK(cnrtNotifierDestroy(ns));
                 MLU_CHECK(cnrtNotifierDestroy(ne));
             }
             double avg = bw_m.trimmed_mean();
-            results.push_back({"STREAM_Copy", avg,
-                ((double)2 * sizeof(T) * array_size / 1e9) / avg * 1000,
+            results.push_back({name, avg,
+                (bytes / 1e9) / avg * 1000,
                 bw_m.cv() * 100.0});
-        }
+        };
 
-        // --- STREAM Scale ---
-        {
-            for (int i = 0; i < warmup; ++i) {
-                stream_scale_kernel<T><<<dim, k_type, queue>>>(d_c, d_b, (T)3.5, array_size);
-                MLU_CHECK(cnrtQueueSync(queue));
-            }
-            PerfMetrics bw_m;
-            for (int i = 0; i < measure; ++i) {
-                cnrtNotifier_t ns, ne;
-                MLU_CHECK(cnrtNotifierCreate(&ns));
-                MLU_CHECK(cnrtNotifierCreate(&ne));
-                MLU_CHECK(cnrtPlaceNotifier(ns, queue));
-                stream_scale_kernel<T><<<dim, k_type, queue>>>(d_c, d_b, (T)3.5, array_size);
-                MLU_CHECK(cnrtPlaceNotifier(ne, queue));
-                MLU_CHECK(cnrtQueueSync(queue));
-                float us;
-                MLU_CHECK(cnrtNotifierDuration(ns, ne, &us));
-                bw_m.add(((double)2 * sizeof(T) * array_size / 1e9) / (us / 1e6));
-                MLU_CHECK(cnrtNotifierDestroy(ns));
-                MLU_CHECK(cnrtNotifierDestroy(ne));
-            }
-            double avg = bw_m.trimmed_mean();
-            results.push_back({"STREAM_Scale", avg,
-                ((double)2 * sizeof(T) * array_size / 1e9) / avg * 1000,
-                bw_m.cv() * 100.0});
-        }
+        double element_bytes = (double)sizeof(T) * array_size;
 
-        // --- STREAM Add ---
-        {
-            for (int i = 0; i < warmup; ++i) {
-                stream_add_kernel<T><<<dim, k_type, queue>>>(d_c, d_a, d_b, array_size);
-                MLU_CHECK(cnrtQueueSync(queue));
-            }
-            PerfMetrics bw_m;
-            for (int i = 0; i < measure; ++i) {
-                cnrtNotifier_t ns, ne;
-                MLU_CHECK(cnrtNotifierCreate(&ns));
-                MLU_CHECK(cnrtNotifierCreate(&ne));
-                MLU_CHECK(cnrtPlaceNotifier(ns, queue));
-                stream_add_kernel<T><<<dim, k_type, queue>>>(d_c, d_a, d_b, array_size);
-                MLU_CHECK(cnrtPlaceNotifier(ne, queue));
-                MLU_CHECK(cnrtQueueSync(queue));
-                float us;
-                MLU_CHECK(cnrtNotifierDuration(ns, ne, &us));
-                bw_m.add(((double)3 * sizeof(T) * array_size / 1e9) / (us / 1e6));
-                MLU_CHECK(cnrtNotifierDestroy(ns));
-                MLU_CHECK(cnrtNotifierDestroy(ne));
-            }
-            double avg = bw_m.trimmed_mean();
-            results.push_back({"STREAM_Add", avg,
-                ((double)3 * sizeof(T) * array_size / 1e9) / avg * 1000,
-                bw_m.cv() * 100.0});
-        }
+        benchmark("STREAM_Copy", 2.0 * element_bytes, [&]() {
+            stream_copy_kernel<T><<<dim, k_type, queue>>>(d_c, d_b, array_size);
+        });
 
-        // --- STREAM Triad ---
-        {
-            for (int i = 0; i < warmup; ++i) {
-                stream_triad_kernel<T><<<dim, k_type, queue>>>(d_c, d_a, d_b, (T)3.5, array_size);
-                MLU_CHECK(cnrtQueueSync(queue));
-            }
-            PerfMetrics bw_m;
-            for (int i = 0; i < measure; ++i) {
-                cnrtNotifier_t ns, ne;
-                MLU_CHECK(cnrtNotifierCreate(&ns));
-                MLU_CHECK(cnrtNotifierCreate(&ne));
-                MLU_CHECK(cnrtPlaceNotifier(ns, queue));
-                stream_triad_kernel<T><<<dim, k_type, queue>>>(d_c, d_a, d_b, (T)3.5, array_size);
-                MLU_CHECK(cnrtPlaceNotifier(ne, queue));
-                MLU_CHECK(cnrtQueueSync(queue));
-                float us;
-                MLU_CHECK(cnrtNotifierDuration(ns, ne, &us));
-                bw_m.add(((double)3 * sizeof(T) * array_size / 1e9) / (us / 1e6));
-                MLU_CHECK(cnrtNotifierDestroy(ns));
-                MLU_CHECK(cnrtNotifierDestroy(ne));
-            }
-            double avg = bw_m.trimmed_mean();
-            results.push_back({"STREAM_Triad", avg,
-                ((double)3 * sizeof(T) * array_size / 1e9) / avg * 1000,
-                bw_m.cv() * 100.0});
-        }
+        benchmark("STREAM_Scale", 2.0 * element_bytes, [&]() {
+            stream_scale_kernel<T><<<dim, k_type, queue>>>(
+                d_c, d_b, (T)3.5, array_size);
+        });
+
+        benchmark("STREAM_Add", 3.0 * element_bytes, [&]() {
+            stream_add_kernel<T><<<dim, k_type, queue>>>(
+                d_c, d_a, d_b, array_size);
+        });
+
+        benchmark("STREAM_Triad", 3.0 * element_bytes, [&]() {
+            stream_triad_kernel<T><<<dim, k_type, queue>>>(
+                d_c, d_a, d_b, (T)3.5, array_size);
+        });
 
         std::cout << std::left << std::setw(16) << "Operation"
                   << std::right << std::setw(18) << "Bandwidth (GB/s)"
