@@ -4,7 +4,7 @@ import pytest
 
 from infinibench.dispatcher import Dispatcher
 from infinibench.hardware import hardware_adapter
-from infinibench.hardware.hardware_adapter import HardwareTestAdapter
+from infinibench.hardware.hardware_adapter import HardwareTestAdapter, detect_platform
 
 CUDA_OUTPUT = """
 Direction: Host to Device
@@ -176,6 +176,54 @@ def test_runtime_detection_ignores_testcase_framework(tmp_path, monkeypatch):
         == "moore"
     )
     assert adapter._get_device_type({}) == "moore"
+
+
+def test_runtime_detection_uses_shared_detection_tools(monkeypatch):
+    monkeypatch.setattr(
+        hardware_adapter,
+        "_tool_exists",
+        lambda tool: tool == "/opt/maca/tools/cu-bridge/bin/cucc",
+    )
+
+    assert detect_platform() == "metax"
+
+
+def test_runtime_detection_accepts_ascend_toolkit_path(monkeypatch):
+    monkeypatch.setattr(hardware_adapter, "_tool_exists", lambda *_: False)
+    monkeypatch.setattr(
+        hardware_adapter,
+        "_path_exists",
+        lambda path: path == "/usr/local/Ascend/ascend-toolkit",
+    )
+
+    assert detect_platform() == "ascend"
+
+
+def test_runtime_detection_accepts_cambricon_toolkit_path(monkeypatch):
+    monkeypatch.setattr(hardware_adapter, "_tool_exists", lambda *_: False)
+    monkeypatch.setattr(
+        hardware_adapter,
+        "_path_exists",
+        lambda path: path == "/usr/local/neuware",
+    )
+
+    assert detect_platform() == "cambricon"
+
+
+def test_runtime_detection_does_not_treat_rocm_hipcc_as_hygon(monkeypatch):
+    monkeypatch.setattr(hardware_adapter, "_tool_exists", lambda tool: tool == "hipcc")
+    monkeypatch.setattr(hardware_adapter, "_path_exists", lambda *_: False)
+
+    assert detect_platform() == "cuda"
+
+
+def test_runtime_detection_accepts_hipcc_inside_dtk(monkeypatch):
+    monkeypatch.setattr(hardware_adapter, "_tool_exists", lambda tool: tool == "hipcc")
+    monkeypatch.setattr(
+        hardware_adapter, "_path_exists", lambda path: path == "/opt/dtk"
+    )
+
+    assert detect_platform() == "hygon"
 
 
 @pytest.mark.parametrize("device", ["cuda", "metax", "corex", "hygon", "moore"])

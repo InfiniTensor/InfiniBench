@@ -31,6 +31,7 @@ class TestCategory(str, Enum):
     INFER = "infer"
     COMM = "comm"
     TRAIN = "train"
+    COMPATIBILITY = "compatibility"
 
 
 # Valid test categories (derived from TestCategory enum)
@@ -232,6 +233,37 @@ INFINIOPS_STREAM_ACCESSORS = {
     "cuda": ("cuda", "cuda_stream"),
     "mlu": ("mlu", "mlu_stream"),
     "musa": ("musa", "musa_stream"),
+}
+
+
+# ============================================================
+# Compatibility Test Adapter Constants
+# ============================================================
+
+CUDA_SAMPLE_CONFIGS = {
+    "cuda": {
+        "sms": "80",
+        "make_args": (),
+    },
+    "metax": {
+        "sms": "70",
+        "make_args": (
+            "ALL_CCFLAGS=--std=c++11",
+            "ALL_LDFLAGS=",
+            "GENCODE_FLAGS=",
+        ),
+    },
+    "corex": {
+        "sms": "ivcore20",
+        "make_args": (
+            "ALL_CCFLAGS=-x ivcore --cuda-gpu-arch=ivcore20 "
+            "--cuda-path=/usr/local/corex --std=c++11",
+            "ALL_LDFLAGS=--cuda-gpu-arch=ivcore20 "
+            "--cuda-path=/usr/local/corex -L/usr/local/corex/lib "
+            "-Wl,-rpath,/usr/local/corex/lib -lcudart",
+            "GENCODE_FLAGS=",
+        ),
+    },
 }
 
 

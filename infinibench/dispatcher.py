@@ -24,6 +24,10 @@ _ADAPTER_REGISTRY = {
     (TestCategory.INFER, "vllm"): lambda: _create_inference_adapter(),
     (TestCategory.TRAIN, "megatron"): lambda: _create_training_adapter(),
     (TestCategory.TRAIN, "infinitrain"): lambda: _create_training_adapter(),
+    (
+        TestCategory.COMPATIBILITY,
+        "cudasamples",
+    ): lambda: _create_compatibility_adapter(),
 }
 
 
@@ -67,6 +71,13 @@ def _create_training_adapter():
     from infinibench.training.training_adapter import TrainingAdapter
 
     return TrainingAdapter()
+
+
+def _create_compatibility_adapter():
+    """Create compatibility adapter (lazy import)."""
+    from infinibench.compatibility.compatibility_adapter import CompatibilityAdapter
+
+    return CompatibilityAdapter()
 
 
 class Dispatcher:

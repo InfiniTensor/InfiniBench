@@ -5,6 +5,7 @@ from infinibench.common.hardware_info import HardwareCollector
 from infinibench.utils import hardware_detector
 from infinibench.utils.hardware_detector import HardwareDetector
 
+
 MTHREADS_OUTPUT = """
 Attached GPUs                                     :  2
 

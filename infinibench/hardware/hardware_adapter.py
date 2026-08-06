@@ -25,7 +25,11 @@ from infinibench.common.constants import (
     InfiniBenchJson,
 )
 from infinibench.common.csv_utils import create_timeseries_metric
-from infinibench.hardware.constants import PLATFORM_ALIASES, PLATFORM_CONFIGS
+from infinibench.hardware.constants import (
+    PLATFORM_ALIASES,
+    PLATFORM_CONFIGS,
+    PLATFORM_DETECTION_ORDER,
+)
 from infinibench.utils.time_utils import get_timestamp
 
 logger = logging.getLogger(__name__)
@@ -33,39 +37,34 @@ logger = logging.getLogger(__name__)
 
 def detect_platform() -> str:
     """Detect the installed accelerator toolchain."""
-    if (
-        shutil.which("npu-smi")
-        or shutil.which("atc")
-        or Path("/usr/local/Ascend/ascend-toolkit").exists()
-    ):
-        return "ascend"
-    if shutil.which("cncc") or Path("/usr/local/neuware").exists():
-        return "cambricon"
-    if shutil.which("mcc") or shutil.which("mthreads-gmi"):
-        return "moore"
-
-    maca_path = Path("/opt/maca")
-    if (
-        (maca_path / "tools" / "cu-bridge" / "bin" / "cucc").exists()
-        or shutil.which("cucc")
-        or shutil.which("mxcc")
-    ):
-        return "metax"
-
-    dtk_path = Path("/opt/dtk")
-    if (
-        (dtk_path / "bin" / "hy-smi").exists()
-        or shutil.which("hy-smi")
-        or (dtk_path.exists() and shutil.which("hipcc"))
-    ):
-        return "hygon"
-
-    corex_path = Path("/usr/local/corex")
-    if (corex_path / "bin" / "ixsmi").exists() or (
-        corex_path / "bin" / "clang++"
-    ).exists():
-        return "corex"
+    for platform in PLATFORM_DETECTION_ORDER:
+        platform_config = PLATFORM_CONFIGS[platform]
+        tools = platform_config["detection_tools"]
+        if any(_tool_exists(tool) for tool in tools):
+            return platform
+        paths = platform_config.get("detection_paths", ())
+        if any(_path_exists(path) for path in paths):
+            return platform
+        conditional_tools = platform_config.get("conditional_detection_tools", ())
+        if any(
+            _path_exists(root) and _tool_exists(tool)
+            for root, tool in conditional_tools
+        ):
+            return platform
     return "cuda"
+
+
+def _tool_exists(tool: str) -> bool:
+    """Return whether a command or absolute tool path is available."""
+    path = Path(tool)
+    if path.is_absolute():
+        return path.is_file()
+    return shutil.which(tool) is not None
+
+
+def _path_exists(path: str) -> bool:
+    """Return whether a platform-specific installation path exists."""
+    return Path(path).exists()
 
 
 class HardwareTestAdapter(BaseAdapter):
