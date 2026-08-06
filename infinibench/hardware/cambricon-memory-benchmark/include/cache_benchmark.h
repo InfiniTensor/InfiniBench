@@ -1,11 +1,9 @@
 #pragma once
 
 #include "cnrt_utils.h"
+#include "nram_utils.h"
 
 namespace mlu_perf {
-
-#define NRAM_MAX_CB (1024 * 240)
-#define ALIGN_CB 128
 
 // ============================================================
 // NRAM Bandwidth Kernel
@@ -16,15 +14,11 @@ namespace mlu_perf {
 template <typename T>
 __mlu_global__ void nram_add_kernel(T* dst, const T* src, size_t n,
                                     int repeat) {
-    __nram__ char nram_raw[NRAM_MAX_CB];
-    char* aligned = (char*)(((size_t)nram_raw + ALIGN_CB - 1) & ~(ALIGN_CB - 1));
-    size_t usable = NRAM_MAX_CB - (aligned - nram_raw);
-    // 2 buffers: input + output
-    size_t chunk = usable / (2 * sizeof(T));
-    chunk = (chunk / (ALIGN_CB / sizeof(T))) * (ALIGN_CB / sizeof(T));
+    __nram__ char nram_raw[kNramBytes];
+    T* buf_a;
+    size_t chunk = prepare_nram_layout<T>(nram_raw, 2, &buf_a);
     if (chunk == 0) return;
 
-    T* buf_a = (T*)aligned;
     T* buf_b = buf_a + chunk;
 
     size_t per_core = (n + taskDim - 1) / taskDim;
@@ -51,14 +45,10 @@ __mlu_global__ void nram_add_kernel(T* dst, const T* src, size_t n,
 
 template <typename T>
 __mlu_global__ void cache_rw_kernel(T* dst, const T* src, size_t n, int repeat) {
-    __nram__ char nram_raw[NRAM_MAX_CB];
-    char* aligned = (char*)(((size_t)nram_raw + ALIGN_CB - 1) & ~(ALIGN_CB - 1));
-    size_t usable = NRAM_MAX_CB - (aligned - nram_raw);
-    size_t chunk = usable / sizeof(T);
-    chunk = (chunk / (ALIGN_CB / sizeof(T))) * (ALIGN_CB / sizeof(T));
+    __nram__ char nram_raw[kNramBytes];
+    T* buf;
+    size_t chunk = prepare_nram_layout<T>(nram_raw, 1, &buf);
     if (chunk == 0) return;
-
-    T* buf = (T*)aligned;
 
     size_t per_core = (n + taskDim - 1) / taskDim;
     size_t start = taskId * per_core;
@@ -106,9 +96,10 @@ public:
         std::cout << "===================================================\n\n";
 
         // Use the maximum NRAM chunk: two buffers in 240 KB, about 120 KB each.
-        size_t nram_bytes = NRAM_MAX_CB - ALIGN_CB;
+        size_t nram_bytes = kNramBytes - kNramAlignment;
         size_t chunk = nram_bytes / (2 * sizeof(T));
-        chunk = (chunk / (ALIGN_CB / sizeof(T))) * (ALIGN_CB / sizeof(T));
+        chunk = (chunk / (kNramAlignment / sizeof(T)))
+                * (kNramAlignment / sizeof(T));
         size_t chunk_bytes = chunk * sizeof(T);
         size_t total_elements = chunk * total_cores;
         size_t total_bytes = total_elements * sizeof(T);

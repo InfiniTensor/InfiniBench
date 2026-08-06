@@ -442,3 +442,41 @@ def test_cambricon_cmake_uses_cncc_as_the_compiler():
     )
     assert "CXX_COMPILER_LAUNCHER" not in source
     assert "RULE_LAUNCH_COMPILE" not in source
+
+
+def test_cambricon_kernels_share_nram_layout_calculation():
+    benchmark_dir = (
+        Path(hardware_adapter.__file__).parent / "cambricon-memory-benchmark"
+    )
+    utility = (benchmark_dir / "include" / "nram_utils.h").read_text(encoding="utf-8")
+    stream = (benchmark_dir / "include" / "stream_benchmark.h").read_text(
+        encoding="utf-8"
+    )
+    cache = (benchmark_dir / "include" / "cache_benchmark.h").read_text(
+        encoding="utf-8"
+    )
+
+    assert "prepare_nram_layout" in utility
+    assert stream.count("prepare_nram_layout<T>") == 5
+    assert cache.count("prepare_nram_layout<T>") == 2
+    assert "#define NRAM_MAX" not in stream + cache
+
+
+def test_cambricon_stream_measurement_uses_shared_control_flow():
+    source = (
+        Path(hardware_adapter.__file__).parent
+        / "cambricon-memory-benchmark"
+        / "include"
+        / "stream_benchmark.h"
+    ).read_text(encoding="utf-8")
+
+    expected_cases = [
+        'benchmark("STREAM_Copy", 2.0 * element_bytes',
+        'benchmark("STREAM_Scale", 2.0 * element_bytes',
+        'benchmark("STREAM_Add", 3.0 * element_bytes',
+        'benchmark("STREAM_Triad", 3.0 * element_bytes',
+    ]
+    positions = [source.index(case) for case in expected_cases]
+
+    assert positions == sorted(positions)
+    assert source.count("cnrtNotifierCreate") == 2
