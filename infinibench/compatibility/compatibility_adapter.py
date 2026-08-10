@@ -323,6 +323,23 @@ class CompatibilityAdapter(BaseAdapter):
             if maca_path:
                 env["MACA_PATH"] = maca_path
 
+        sample_config = CUDA_SAMPLE_CONFIGS[platform]
+        for name, value in sample_config.get("extra_env", {}).items():
+            env.setdefault(name, value)
+        cmake_candidates = sample_config.get("cmake_commands", ("cmake",))
+        cmake_command = next(
+            (
+                resolved
+                for candidate in cmake_candidates
+                if (resolved := shutil.which(candidate, path=env.get("PATH")))
+            ),
+            None,
+        )
+        if cmake_command:
+            env["CMAKE_COMMAND"] = cmake_command
+            command_dir = str(Path(cmake_command).resolve().parent)
+            env["PATH"] = os.pathsep.join((command_dir, env.get("PATH", "")))
+
         return env
 
     @staticmethod
@@ -347,13 +364,14 @@ class CompatibilityAdapter(BaseAdapter):
         """Compile one CUDA sample and return its executable."""
         sms = env.get("SMS", "80")
         if build_system == "cmake":
+            cmake_command = env.get("CMAKE_COMMAND", "cmake")
             wrapper_dir = build_dir / "source"
             cmake_build_dir = build_dir / "build"
             self._write_cmake_wrapper(wrapper_dir, sample_dir, sms)
             cmake_build_dir.mkdir(parents=True, exist_ok=True)
             configure_result = self._run_build_command(
                 [
-                    "cmake",
+                    cmake_command,
                     "-S",
                     str(wrapper_dir),
                     "-B",
@@ -368,7 +386,7 @@ class CompatibilityAdapter(BaseAdapter):
             if configure_result.returncode:
                 raise RuntimeError(self._command_error(configure_result))
             command = [
-                "cmake",
+                cmake_command,
                 "--build",
                 str(cmake_build_dir),
                 "--parallel",

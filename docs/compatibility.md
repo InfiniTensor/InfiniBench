@@ -67,8 +67,8 @@ SDK uses a wrapper or different target. Arguments are passed directly as an
 argument list; shell expansion is not performed. The resolved default compiler
 and architecture are added to the result config when they were not explicit in
 the input. For MetaX, the adapter also infers `MACA_PATH` from the resolved
-`cucc` or `mxcc` location when the variable is unset. An explicit `MACA_PATH`
-is preserved.
+`cucc` or `mxcc` location when the variable is unset. It uses the cu-bridge
+`cmake_maca` wrapper when available. An explicit `MACA_PATH` is preserved.
 
 For non-NVIDIA Makefile builds, the default arguments remove NVIDIA-only
 `--threads`, `-gencode`, and `-m64` flags. Platform support is declared only

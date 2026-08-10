@@ -247,6 +247,12 @@ CUDA_SAMPLE_CONFIGS = {
     },
     "metax": {
         "sms": "70",
+        "cmake_commands": (
+            "/opt/maca/tools/cu-bridge/tools/cmake_maca",
+            "cmake_maca",
+            "cmake",
+        ),
+        "extra_env": {"CUCC_CMAKE_ENTRY": "2"},
         "make_args": (
             "ALL_CCFLAGS=--std=c++11",
             "ALL_LDFLAGS=",

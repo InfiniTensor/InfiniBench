@@ -93,14 +93,28 @@ def test_architecture_rejects_empty_or_cmake_control_characters(sms):
 
 
 @pytest.mark.parametrize(
-    ("build_system", "manifest", "sms", "compiler", "jobs"),
+    ("build_system", "manifest", "sms", "compiler", "cmake_command", "jobs"),
     [
-        ("cmake", "CMakeLists.txt", "80", "/usr/local/cuda/bin/nvcc", 7),
-        ("make", "Makefile", "70", "/usr/local/musa/bin/mcc", 3),
+        (
+            "cmake",
+            "CMakeLists.txt",
+            "80",
+            "/usr/local/cuda/bin/nvcc",
+            "/vendor/bin/cmake_maca",
+            7,
+        ),
+        ("make", "Makefile", "70", "/usr/local/musa/bin/mcc", "cmake", 3),
     ],
 )
 def test_build_commands_include_compiler_arch_and_jobs(
-    tmp_path, monkeypatch, build_system, manifest, sms, compiler, jobs
+    tmp_path,
+    monkeypatch,
+    build_system,
+    manifest,
+    sms,
+    compiler,
+    cmake_command,
+    jobs,
 ):
     sample_dir = _sample(tmp_path, "0_Introduction", "vectorAdd", manifest)
     build_dir = tmp_path / "build"
@@ -111,7 +125,7 @@ def test_build_commands_include_compiler_arch_and_jobs(
 
     def fake_run(command, **kwargs):
         calls.append(command)
-        is_build = command[:2] == ["cmake", "--build"] or (
+        is_build = (len(command) > 1 and command[1] == "--build") or (
             command[0] == "make" and "clean" not in command
         )
         if is_build:
@@ -122,12 +136,21 @@ def test_build_commands_include_compiler_arch_and_jobs(
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     binary = CompatibilityAdapter()._compile_sample(
-        sample_dir, build_dir, {"SMS": sms, "CUDACXX": compiler}, 30, jobs, build_system
+        sample_dir,
+        build_dir,
+        {
+            "SMS": sms,
+            "CUDACXX": compiler,
+            "CMAKE_COMMAND": cmake_command,
+        },
+        30,
+        jobs,
+        build_system,
     )
 
     expected = (
         [
-            "cmake",
+            cmake_command,
             "--build",
             str(build_dir / "build"),
             "--parallel",
@@ -211,6 +234,17 @@ def test_metax_compile_env_preserves_explicit_maca_path(
     env = CompatibilityAdapter()._build_compile_env("metax", "70", compiler)
 
     assert env["MACA_PATH"] == "/custom/maca"
+
+
+def test_metax_compile_env_selects_cu_bridge_cmake(monkeypatch, compiler_available):
+    compiler = "/opt/maca/tools/cu-bridge/bin/cucc"
+
+    env = CompatibilityAdapter()._build_compile_env("metax", "70", compiler)
+
+    cmake_command = "/opt/maca/tools/cu-bridge/tools/cmake_maca"
+    assert env["CMAKE_COMMAND"] == cmake_command
+    assert env["CUCC_CMAKE_ENTRY"] == "2"
+    assert env["PATH"].split(os.pathsep)[0] == str(Path(cmake_command).resolve().parent)
 
 
 def test_cuda_sample_metrics_keep_skips_separate(tmp_path, monkeypatch):
