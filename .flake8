@@ -25,6 +25,7 @@ exclude =
     venv,
     build,
     dist,
+    submodules,
     *.egg-info
 
 # Show source code for each error

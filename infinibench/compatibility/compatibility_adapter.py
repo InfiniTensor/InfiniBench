@@ -25,11 +25,9 @@ from infinibench.utils.time_utils import get_timestamp
 logger = logging.getLogger(__name__)
 _METRIC_PREFIX = "compatibility.cuda_samples"
 
-# Repo root for finding cuda-samples
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_CUDA_SAMPLES_DIR = (
-    _REPO_ROOT / "InfiniPerf" / "benchmarks" / "compatibility" / "cuda-samples"
-)
+# Repository submodule containing the pinned CUDA Samples revision.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_CUDA_SAMPLES_DIR = _REPO_ROOT / "submodules" / "cuda-samples"
 
 
 class CompatibilityAdapter(BaseAdapter):
