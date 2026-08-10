@@ -5,7 +5,10 @@ from pathlib import Path
 import pytest
 
 from infinibench.common.constants import CUDA_SAMPLE_CONFIGS
-from infinibench.compatibility.compatibility_adapter import CompatibilityAdapter
+from infinibench.compatibility.compatibility_adapter import (
+    _CUDA_SAMPLES_DIR,
+    CompatibilityAdapter,
+)
 from infinibench.dispatcher import Dispatcher
 
 
@@ -23,6 +26,12 @@ def compiler_available(monkeypatch):
         "infinibench.compatibility.compatibility_adapter.shutil.which",
         lambda candidate, **_: candidate,
     )
+
+
+def test_default_cuda_samples_dir_uses_repository_submodule():
+    repository_root = Path(__file__).resolve().parents[1]
+
+    assert _CUDA_SAMPLES_DIR == repository_root / "submodules" / "cuda-samples"
 
 
 def test_discovers_nested_cmake_and_make_samples(tmp_path):

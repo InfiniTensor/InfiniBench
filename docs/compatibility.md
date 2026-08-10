@@ -13,8 +13,6 @@ adapter execution error.
   "testcase": "compatibility.CudaSamples.PassRate",
   "config": {
     "platform": "nvidia",
-    "cuda_samples_dir": "/workspace/cuda-samples",
-    "build_system": "make",
     "sample_filter": ["vectorAdd", "matrixMul", "clock"],
     "timeout_per_sample": 180,
     "jobs": 4
@@ -22,15 +20,22 @@ adapter execution error.
 }
 ```
 
-`cuda_samples_dir` must contain a `Samples` directory. The adapter recursively
-discovers `Samples/<category>/<sample>` directories containing a Makefile or a
-standalone CMake project. CMake grouping manifests that only aggregate child
-directories are excluded. A requested sample name that is not found, or an
-empty `sample_filter`, is a configuration error instead of a successful
-zero-sample result.
+Initialize the bundled CUDA Samples revision before running compatibility tests:
 
-The InfiniPerf cuda-samples submodule pins the CMake-based `master` revision.
-Its `batch_test` branch provides the Makefiles used by the original InfiniPerf
+```bash
+git submodule update --init submodules/cuda-samples
+```
+
+The adapter uses `submodules/cuda-samples` by default. An optional
+`cuda_samples_dir` override must contain a `Samples` directory. The adapter
+recursively discovers `Samples/<category>/<sample>` directories containing a
+Makefile or a standalone CMake project. CMake grouping manifests that only
+aggregate child directories are excluded. A requested sample name that is not
+found, or an empty `sample_filter`, is a configuration error instead of a
+successful zero-sample result.
+
+The bundled submodule pins the CMake-based `master` revision at `7b601789`.
+The upstream `batch_test` branch provides the Makefiles used by the original
 compatibility workflow. The adapter supports both layouts; use `build_system`
 to select `cmake`, `make`, or the default `auto` detection.
 
@@ -54,8 +59,8 @@ values and Make arguments live in `infinibench.common.constants`.
 The supported canonical platform names are `cuda`, `metax`, and `corex`.
 The existing aliases `nvidia` and `iluvatar` are also accepted.
 
-The CoreX default targets the BI-V150/TG150 validated on `tianshu58`. Override
-`sms` and `make_args` together when testing a different Iluvatar architecture.
+The CoreX default targets BI-V150/TG150. Override `sms` and `make_args`
+together when testing a different Iluvatar architecture.
 
 Set `compiler`, `sms`, or `make_args` in the input when the installed vendor
 SDK uses a wrapper or different target. Arguments are passed directly as an
