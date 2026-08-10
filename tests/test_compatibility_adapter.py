@@ -323,6 +323,24 @@ def test_run_sample_uses_the_binary_directory(tmp_path, monkeypatch):
     ]
 
 
+def test_run_sample_resolves_a_relative_binary_path(tmp_path, monkeypatch):
+    binary = Path("build") / "sample"
+    monkeypatch.chdir(tmp_path)
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs["cwd"]))
+        return subprocess.CompletedProcess(command, 0, "Result = PASS", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result, _ = CompatibilityAdapter()._run_sample(binary, 30)
+
+    resolved_binary = binary.resolve()
+    assert result == "pass"
+    assert calls == [([str(resolved_binary)], str(resolved_binary.parent))]
+
+
 def test_metrics_reject_an_empty_sample_set():
     with pytest.raises(ValueError, match="No CUDA samples selected"):
         CompatibilityAdapter._build_metrics([])

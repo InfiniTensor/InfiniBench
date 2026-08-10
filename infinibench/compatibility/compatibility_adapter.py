@@ -467,6 +467,7 @@ infinibench_set_cuda_architectures("{sample_path}")
         self, binary: Path, timeout: int, env: Optional[Dict[str, str]] = None
     ) -> Tuple[str, str]:
         """Run a compiled CUDA sample."""
+        binary = binary.resolve()
         try:
             result = subprocess.run(
                 [str(binary)],
