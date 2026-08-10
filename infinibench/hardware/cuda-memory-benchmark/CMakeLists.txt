@@ -63,7 +63,7 @@ elseif(PLATFORM STREQUAL "corex")
     # CoreX adapted CMake handles CUDA compiler automatically (clang++)
     set(CMAKE_CUDA_STANDARD 17)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-    set(CMAKE_CUDA_ARCHITECTURES "ivcore20" CACHE STRING "CoreX GPU architectures")
+    set(CMAKE_CUDA_ARCHITECTURES "ivcore11" CACHE STRING "CoreX GPU architectures")
 
     include_directories($ENV{COREX_PATH}/include)
     link_directories($ENV{COREX_PATH}/lib64)

@@ -254,11 +254,11 @@ CUDA_SAMPLE_CONFIGS = {
         ),
     },
     "corex": {
-        "sms": "ivcore20",
+        "sms": "ivcore11",
         "make_args": (
-            "ALL_CCFLAGS=-x ivcore --cuda-gpu-arch=ivcore20 "
+            "ALL_CCFLAGS=-x ivcore --cuda-gpu-arch=ivcore11 "
             "--cuda-path=/usr/local/corex --std=c++11",
-            "ALL_LDFLAGS=--cuda-gpu-arch=ivcore20 "
+            "ALL_LDFLAGS=--cuda-gpu-arch=ivcore11 "
             "--cuda-path=/usr/local/corex -L/usr/local/corex/lib "
             "-Wl,-rpath,/usr/local/corex/lib -lcudart",
             "GENCODE_FLAGS=",
