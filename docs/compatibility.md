@@ -49,10 +49,13 @@ values and Make arguments live in `infinibench.common.constants`.
 | --- | --- | --- |
 | NVIDIA | `nvcc` | `80` |
 | MetaX | `cucc` (falls back to `mxcc`) | `70` |
-| Iluvatar CoreX | `/usr/local/corex/bin/clang++` | `ivcore20` |
+| Iluvatar CoreX (BI-V150/TG150) | `/usr/local/corex/bin/clang++` | `ivcore11` |
 
 The supported canonical platform names are `cuda`, `metax`, and `corex`.
 The existing aliases `nvidia` and `iluvatar` are also accepted.
+
+The CoreX default targets the BI-V150/TG150 validated on `tianshu58`. Override
+`sms` and `make_args` together when testing a different Iluvatar architecture.
 
 Set `compiler`, `sms`, or `make_args` in the input when the installed vendor
 SDK uses a wrapper or different target. Arguments are passed directly as an

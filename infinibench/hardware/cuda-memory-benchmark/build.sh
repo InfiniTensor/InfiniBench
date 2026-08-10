@@ -110,7 +110,7 @@ elif [[ "$PLATFORM" == "corex" ]]; then
 
     echo -e "${YELLOW}Configuring with CoreX CMake...${NC}"
     cmake .. -DCMAKE_BUILD_TYPE=Release -DPLATFORM=corex \
-        -DCMAKE_CUDA_ARCHITECTURES=ivcore20
+        -DCMAKE_CUDA_ARCHITECTURES=ivcore11
 
     echo -e "${YELLOW}Building...${NC}"
     make -j$(nproc)

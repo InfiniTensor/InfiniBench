@@ -135,11 +135,11 @@ def test_cmake_wrapper_overrides_sample_target_architectures(tmp_path):
     sample_dir = _sample(tmp_path, "0_Introduction", "vectorAdd", "CMakeLists.txt")
     wrapper_dir = tmp_path / "wrapper"
 
-    CompatibilityAdapter._write_cmake_wrapper(wrapper_dir, sample_dir, "ivcore20")
+    CompatibilityAdapter._write_cmake_wrapper(wrapper_dir, sample_dir, "ivcore11")
 
     wrapper = (wrapper_dir / "CMakeLists.txt").read_text(encoding="utf-8")
     assert f'add_subdirectory("{sample_dir.resolve().as_posix()}" sample)' in wrapper
-    assert 'PROPERTY CUDA_ARCHITECTURES "ivcore20"' in wrapper
+    assert 'PROPERTY CUDA_ARCHITECTURES "ivcore11"' in wrapper
 
 
 @pytest.mark.parametrize("platform", ["metax", "corex"])
@@ -156,11 +156,20 @@ def test_corex_make_args_keep_source_language_out_of_link_step():
     assert "-x ivcore" not in link_args
 
 
+def test_corex_defaults_target_bi_v150():
+    config = CUDA_SAMPLE_CONFIGS["corex"]
+    compile_args, link_args, _ = config["make_args"]
+
+    assert config["sms"] == "ivcore11"
+    assert "--cuda-gpu-arch=ivcore11" in compile_args
+    assert "--cuda-gpu-arch=ivcore11" in link_args
+
+
 def test_compile_env_matches_selected_vendor_toolkit(monkeypatch, compiler_available):
     compiler = "/usr/local/corex/bin/clang++"
     monkeypatch.setenv("CUDA_HOME", "/usr/local/cuda")
     monkeypatch.setenv("CUDA_PATH", "/usr/local/cuda")
-    env = CompatibilityAdapter()._build_compile_env("corex", "ivcore20", compiler)
+    env = CompatibilityAdapter()._build_compile_env("corex", "ivcore11", compiler)
 
     expected_root = str(Path(compiler).resolve().parent.parent)
     assert env["CUDACXX"] == compiler
