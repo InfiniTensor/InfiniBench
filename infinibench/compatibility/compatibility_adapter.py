@@ -365,22 +365,32 @@ class CompatibilityAdapter(BaseAdapter):
         sms = env.get("SMS", "80")
         if build_system == "cmake":
             cmake_command = env.get("CMAKE_COMMAND", "cmake")
+            cmake_env = env.copy()
             wrapper_dir = build_dir / "source"
             cmake_build_dir = build_dir / "build"
             self._write_cmake_wrapper(wrapper_dir, sample_dir, sms)
             cmake_build_dir.mkdir(parents=True, exist_ok=True)
+            configure_command = [
+                cmake_command,
+                "-S",
+                str(wrapper_dir),
+                "-B",
+                str(cmake_build_dir),
+            ]
+            if Path(cmake_command).name == "cmake_maca":
+                cmake_env.pop("CUDACXX", None)
+                cmake_env["WCUDA_HOME"] = str(build_dir / "cmake-maca")
+            else:
+                configure_command.extend(
+                    [
+                        f"-DCMAKE_CUDA_ARCHITECTURES={sms}",
+                        f"-DCMAKE_CUDA_COMPILER={env['CUDACXX']}",
+                    ]
+                )
             configure_result = self._run_build_command(
-                [
-                    cmake_command,
-                    "-S",
-                    str(wrapper_dir),
-                    "-B",
-                    str(cmake_build_dir),
-                    f"-DCMAKE_CUDA_ARCHITECTURES={sms}",
-                    f"-DCMAKE_CUDA_COMPILER={env['CUDACXX']}",
-                ],
+                configure_command,
                 sample_dir,
-                env,
+                cmake_env,
                 timeout,
             )
             if configure_result.returncode:
@@ -393,6 +403,7 @@ class CompatibilityAdapter(BaseAdapter):
                 str(jobs),
             ]
             search_root = cmake_build_dir
+            env = cmake_env
         else:
             self._run_build_command(["make", "clean"], sample_dir, env, timeout)
             command = [

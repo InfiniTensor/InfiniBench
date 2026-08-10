@@ -174,6 +174,44 @@ def test_cmake_wrapper_overrides_sample_target_architectures(tmp_path):
     assert 'PROPERTY CUDA_ARCHITECTURES "ivcore11"' in wrapper
 
 
+def test_metax_cmake_wrapper_owns_toolchain_detection(tmp_path, monkeypatch):
+    sample_dir = _sample(tmp_path, "0_Introduction", "vectorAdd", "CMakeLists.txt")
+    build_dir = tmp_path / "build"
+    binary = build_dir / "build" / "vectorAdd"
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs["env"]))
+        if "--build" in command:
+            binary.parent.mkdir(parents=True, exist_ok=True)
+            binary.write_text("binary", encoding="utf-8")
+            binary.chmod(0o755)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    cmake_command = "/opt/maca/tools/cu-bridge/tools/cmake_maca"
+
+    result = CompatibilityAdapter()._compile_sample(
+        sample_dir,
+        build_dir,
+        {
+            "SMS": "70",
+            "CUDACXX": "/opt/maca/tools/cu-bridge/bin/cucc",
+            "CMAKE_COMMAND": cmake_command,
+        },
+        30,
+        4,
+        "cmake",
+    )
+
+    configure_command, configure_env = calls[0]
+    assert result == binary
+    assert not any(arg.startswith("-DCMAKE_CUDA_") for arg in configure_command)
+    assert "CUDACXX" not in configure_env
+    assert configure_env["WCUDA_HOME"] == str(build_dir / "cmake-maca")
+    assert calls[1][1]["WCUDA_HOME"] == configure_env["WCUDA_HOME"]
+
+
 @pytest.mark.parametrize("platform", ["metax", "corex"])
 def test_vendor_make_args_remove_nvidia_only_flags(platform):
     args = " ".join(CUDA_SAMPLE_CONFIGS[platform]["make_args"])
