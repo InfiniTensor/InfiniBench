@@ -5,6 +5,9 @@
 # Components:
 #   operator   - InfiniCore (operator testing)
 #   hardware   - CUDA memory benchmark (hardware testing)
+#   inference  - Inference frameworks (vLLM, InfiniLM)
+#   training   - Training frameworks (InfiniTrain, Megatron)
+#   comm       - Communication tests (NCCL tests)
 #   all        - All components (default)
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
@@ -23,6 +26,9 @@ NC='\033[0m'
 # ========================================
 # Environment Variables (always exported)
 # ========================================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 export INFINI_ROOT="$HOME/.infini"
 export LD_LIBRARY_PATH="$INFINI_ROOT/lib:$LD_LIBRARY_PATH"
 
@@ -80,6 +86,78 @@ check_infinicore() {
         echo -e "${YELLOW}[WARNING]${NC}"
         echo "    Failed to import infinicore:"
         echo "    ${error_msg}" | head -n 15 | sed 's/^/    /'
+        return 1
+    fi
+}
+
+# Check vLLM
+check_vllm() {
+    echo -n "  vLLM... "
+    if check_python_package vllm; then
+        echo -e "${GREEN}[OK]${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}[WARNING]${NC} not installed"
+        return 1
+    fi
+}
+
+# Check InfiniLM
+check_infinilm() {
+    echo -n "  InfiniLM... "
+    if python -c "import infinilm" 2>/dev/null; then
+        local version=$(python -c "import infinilm; print(getattr(infinilm, '__version__', 'unknown'))" 2>/dev/null || echo "unknown")
+        echo -e "${GREEN}[OK]${NC} (version $version)"
+        return 0
+    else
+        # Check if directory exists but not in PYTHONPATH
+        local INFINILM_PATH="${INFINILM_PATH:-$HOME/InfiniLM}"
+        if [ -d "$INFINILM_PATH/python/infinilm" ]; then
+            echo -e "${YELLOW}[WARNING]${NC} found at $INFINILM_PATH but not in PYTHONPATH"
+            echo "Run: export PYTHONPATH=$INFINILM_PATH/python:\$PYTHONPATH"
+        else
+            echo -e "${YELLOW}[WARNING]${NC} not installed"
+        fi
+        return 1
+    fi
+}
+
+# TODO: Megatron-LM check - currently assumes submodule usage
+check_megatron() {
+    echo -n "  Megatron-LM... "
+    if check_python_package megatron; then
+        echo -e "${GREEN}[OK]${NC} (installed as package)"
+        return 0
+    elif [ -d "$PROJECT_ROOT/submodules/Megatron-LM" ]; then
+        echo -e "${GREEN}[OK]${NC} (found as submodule)"
+        return 0
+    else
+        echo -e "${YELLOW}[WARNING]${NC} not found (expected as submodule or Python package)"
+        return 1
+    fi
+}
+
+# TODO: InfiniTrain check - currently not available as Python package
+check_infinitrain() {
+    echo -n "  InfiniTrain... "
+    if [ -d "$PROJECT_ROOT/submodules/InfiniTrain" ]; then
+        echo -e "${GREEN}[OK]${NC} (found as submodule)"
+        return 0
+    else
+        echo -e "${YELLOW}[WARNING]${NC} not found (expected as submodule)"
+        return 1
+    fi
+}
+
+# Check NCCL tests
+check_nccl_tests() {
+    echo -n "  NCCL tests... "
+    local NCCL_TESTS_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../submodules/nccl-tests" && pwd)"
+    if [ -f "$NCCL_TESTS_PATH/build/all_reduce_perf" ]; then
+        echo -e "${GREEN}[OK]${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}[WARNING]${NC} not built"
         return 1
     fi
 }
@@ -252,6 +330,219 @@ install_hardware() {
 }
 
 # ========================================
+# NCCL Tests (Communication)
+# ========================================
+install_comm() {
+    echo ""
+    echo "=========================================="
+    echo "NCCL Tests (Communication)"
+    echo "=========================================="
+    echo ""
+
+    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+    local NCCL_TESTS_PATH="$PROJECT_ROOT/submodules/nccl-tests"
+
+    # 1. Check CUDA
+    echo -e "${BLUE}Checking dependencies...${NC}"
+    if ! check_cuda; then
+        echo -e "${RED}[ERROR] CUDA is required for NCCL tests${NC}"
+        return 1
+    fi
+    echo ""
+
+    # 2. Check if already built
+    echo -e "${BLUE}Checking NCCL tests...${NC}"
+    if [ -f "$NCCL_TESTS_PATH/build/all_reduce_perf" ]; then
+        echo -e "${GREEN}[OK] NCCL tests already built${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}[WARNING] NCCL tests not found, building...${NC}"
+    echo ""
+
+    # 3. Build NCCL tests
+    if [ ! -d "$NCCL_TESTS_PATH" ]; then
+        echo -e "${RED}[ERROR] NCCL tests not found at: $NCCL_TESTS_PATH${NC}"
+        echo "Please ensure submodules are initialized:"
+        echo "  git submodule update --init --recursive"
+        return 1
+    fi
+
+    cd "$NCCL_TESTS_PATH" || {
+        echo -e "${RED}[ERROR] Failed to change directory to $NCCL_TESTS_PATH${NC}"
+        return 1
+    }
+
+    echo -e "${BLUE}Building NCCL tests...${NC}"
+    if ! make -j; then
+        echo -e "${RED}[ERROR] Failed to build NCCL tests${NC}"
+        return 1
+    fi
+    echo ""
+
+    # 4. Verify
+    if [ -f "build/all_reduce_perf" ]; then
+        echo -e "${GREEN}[OK] NCCL tests built successfully!${NC}"
+        return 0
+    else
+        echo -e "${RED}[ERROR] NCCL tests build failed${NC}"
+        return 1
+    fi
+}
+
+# ========================================
+# Inference Frameworks
+# ========================================
+install_inference() {
+    echo ""
+    echo "=========================================="
+    echo "Inference Frameworks"
+    echo "=========================================="
+    echo ""
+
+    local exit_code=0
+
+    # 1. Check InfiniCore dependency (required for InfiniLM)
+    echo -e "${BLUE}Checking InfiniCore (required for InfiniLM)...${NC}"
+    if ! check_infinicore; then
+        echo -e "${YELLOW}[WARNING] InfiniCore not found, InfiniLM may not work${NC}"
+        echo "Consider running: $0 operator"
+    fi
+    echo ""
+
+    # 2. Install vLLM
+    echo -e "${BLUE}Installing vLLM...${NC}"
+    if check_python_package vllm; then
+        echo -e "${GREEN}[OK] vLLM already installed${NC}"
+    else
+        if pip install vllm; then
+            echo -e "${GREEN}[OK] vLLM installed${NC}"
+        else
+            echo -e "${RED}[ERROR] Failed to install vLLM${NC}"
+            exit_code=1
+        fi
+    fi
+    echo ""
+
+    # 3. Install InfiniLM
+    echo -e "${BLUE}Installing InfiniLM...${NC}"
+    
+    # Check if already installed
+    if python -c "import infinilm" 2>/dev/null; then
+        echo -e "${GREEN}[OK] InfiniLM already installed${NC}"
+        return $exit_code
+    fi
+
+    # Determine InfiniLM path
+    local INFINILM_PATH="${INFINILM_PATH:-}"
+    
+    # Priority 1: Environment variable
+    if [ -n "$INFINILM_PATH" ] && [ -d "$INFINILM_PATH" ]; then
+        INFINILM_PATH="$INFINILM_PATH"
+    # Priority 2: Home directory
+    elif [ -d "$HOME/InfiniLM" ]; then
+        INFINILM_PATH="$HOME/InfiniLM"
+    # Priority 3: Parent directory
+    elif [ -d "$PROJECT_ROOT/../InfiniLM" ]; then
+        INFINILM_PATH="$(cd "$PROJECT_ROOT/../InfiniLM" && pwd)"
+    fi
+
+    if [ -z "$INFINILM_PATH" ] || [ ! -d "$INFINILM_PATH" ]; then
+        echo -e "${YELLOW}[WARNING] InfiniLM directory not found${NC}"
+        echo ""
+        echo "Please set INFINILM_PATH environment variable:"
+        echo "export INFINILM_PATH=/home/sunjinge/InfiniLM"
+        echo ""
+        echo "Then run this script again"
+        return $exit_code
+    fi
+
+    echo -e "${BLUE}Found InfiniLM at: $INFINILM_PATH${NC}"
+
+    # Check Python package structure
+    local PYTHON_PACKAGE_PATH="$INFINILM_PATH/python"
+    
+    if [ -d "$PYTHON_PACKAGE_PATH" ]; then
+        echo -e "${BLUE}Found Python package at: $PYTHON_PACKAGE_PATH${NC}"
+        
+        # Add to PYTHONPATH for current session
+        export PYTHONPATH="$PYTHON_PACKAGE_PATH:$PYTHONPATH"
+        
+        # Add to .bashrc for future sessions
+        echo ""
+        echo -e "${YELLOW}To make InfiniLM permanently available, add these lines to your ~/.bashrc:${NC}"
+        echo "  export INFINILM_PATH=\"$INFINILM_PATH\""
+        echo "  export PYTHONPATH=\"$PYTHON_PACKAGE_PATH:\$PYTHONPATH\""
+        echo ""
+        
+        # Check if we can import now
+        if python -c "import infinilm" 2>/dev/null; then
+            echo -e "${GREEN}[OK] InfiniLM successfully configured${NC}"
+        else
+            echo -e "${YELLOW}[WARNING] InfiniLM found but import failed${NC}"
+            echo "Current PYTHONPATH: $PYTHONPATH"
+            echo "You may need to install additional dependencies"
+        fi
+    else
+        echo -e "${YELLOW}[WARNING] No Python package found at $PYTHON_PACKAGE_PATH${NC}"
+        echo "Contents of $INFINILM_PATH:"
+        ls -la "$INFINILM_PATH"
+    fi
+
+    return $exit_code
+}
+
+# ========================================
+# Training Frameworks
+# ========================================
+install_training() {
+    echo ""
+    echo "=========================================="
+    echo "Training Frameworks"
+    echo "=========================================="
+    echo ""
+
+    local exit_code=0
+
+    # TODO: Megatron-LM installation - currently assumes submodule usage
+    echo -e "${BLUE}Setting up Megatron-LM...${NC}"
+
+    local MEGATRON_PATH=""
+
+    if [ -n "$MEGATRON_PATH" ] && [ -d "$MEGATRON_PATH" ]; then
+        MEGATRON_PATH="$MEGATRON_PATH"
+
+    elif [ -d "$HOME/Megatron-LM" ]; then
+        MEGATRON_PATH="$HOME/Megatron-LM"
+
+    elif [ -d "$PROJECT_ROOT/submodules/Megatron-LM" ]; then
+        MEGATRON_PATH="$PROJECT_ROOT/submodules/Megatron-LM"
+
+    fi
+
+    if [ -z "$MEGATRON_PATH" ]; then
+        echo -e "${YELLOW}[WARNING] Megatron-LM not found${NC}"
+        echo ""
+        echo "Supported locations:"
+        echo "  \$MEGATRON_PATH"
+        echo "  \$HOME/Megatron-LM"
+        echo "  submodules/Megatron-LM"
+    else
+        echo -e "${GREEN}[OK] Megatron-LM found at $MEGATRON_PATH${NC}"
+    fi
+
+    echo ""
+
+    # TODO: InfiniTrain setup - to be implemented
+    echo -e "${BLUE}Setting up InfiniTrain...${NC}"
+    echo -e "${YELLOW}[INFO] InfiniTrain setup not yet implemented${NC}"
+    echo ""
+
+    return $exit_code
+}
+
+# ========================================
 # Main
 # ========================================
 show_usage() {
@@ -260,15 +551,24 @@ show_usage() {
     echo "Components:"
     echo "  operator   - InfiniCore (operator testing)"
     echo "  hardware   - CUDA memory benchmark (hardware testing)"
+    echo "  inference  - Inference frameworks (vLLM, InfiniLM)"
+    echo "  training   - Training frameworks (Megatron-LM, InfiniTrain)"
+    echo "  comm       - Communication tests (NCCL tests)"
     echo "  all        - All components (default)"
     echo ""
     echo "Environment variables:"
     echo "  INFINICORE_PATH  - Path to InfiniCore source (required for operator)"
+    echo "  INFINILM_PATH    - Path to InfiniLM source"
+    echo "  INFINITRAIN_PATH - Path to InfiniTrain source"
+    echo "  MEGATRON_PATH    - Path to Megatron-LM source"
     echo ""
     echo "Examples:"
     echo "  export INFINICORE_PATH=\"\$HOME/workplace/InfiniCore\""
+    echo "  export INFINILM_PATH=\"\$HOME/InfiniLM\""
     echo "  $0 operator   # Install InfiniCore"
     echo "  $0 hardware   # Build CUDA benchmark"
+    echo "  $0 inference  # Install inference frameworks"
+    echo "  $0 comm       # Build NCCL tests"
     echo "  $0 all        # Install everything"
     echo "  $0            # Install everything (default)"
 }
@@ -291,6 +591,18 @@ main() {
             install_hardware
             exit_code=$?
             ;;
+        inference)
+            install_inference
+            exit_code=$?
+            ;;
+        training)
+            install_training
+            exit_code=$?
+            ;;
+        comm)
+            install_comm
+            exit_code=$?
+            ;;
         all)
             install_infinicore
             exit_code=$?
@@ -300,6 +612,15 @@ main() {
             fi
             
             install_hardware
+            exit_code=$?
+
+            install_inference
+            exit_code=$?
+            
+            install_training
+            exit_code=$?
+            
+            install_comm
             exit_code=$?
             ;;
         --help|-h)

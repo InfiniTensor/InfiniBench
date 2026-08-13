@@ -20,8 +20,11 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/common/install_deps.sh"
-source "${SCRIPT_DIR}/common/prepare_env.sh"
+COMMON_DIR="${SCRIPT_DIR}/common"
+
+# Source common scripts
+source "${COMMON_DIR}/install_deps.sh"
+source "${COMMON_DIR}/prepare_env.sh"
 
 # Default values
 CHECK_DEPS="false"
@@ -56,6 +59,7 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 --check all test.json        # Check all dependencies"
             echo "  $0 --check hardware test.json   # Check hardware deps only"
             echo "  $0 --check hardware,operator test.json"
+            echo "  $0 --check inference,comm test.json  # Check inference and comm deps"
             exit 0
             ;;
         *)
@@ -81,6 +85,7 @@ if [ ${#INPUT_PATHS[@]} -eq 0 ]; then
     echo "  $0 --check all test.json        # Check all dependencies"
     echo "  $0 --check hardware test.json   # Check hardware deps only"
     echo "  $0 --check hardware,operator test.json"
+    echo "  $0 --check inference,comm test.json  # Check inference and comm deps"
     echo ""
     echo "Run '$0 --help' for more information"
     exit 1
@@ -106,10 +111,29 @@ check_all_deps() {
                 echo "Checking operator dependencies:"
                 check_infinicore
                 ;;
+            inference)             
+                echo "Checking inference dependencies:"
+                check_vllm
+                check_infinilm
+                ;;
+            training)                
+                echo "Checking training dependencies:"
+                check_megatron
+                check_infinitrain
+                ;;
+            comm)              
+                echo "Checking communication dependencies:"
+                check_nccl_tests
+                ;;
             all)
                 echo "Checking all dependencies:"
                 check_cuda
                 check_infinicore
+                check_vllm
+                check_infinilm
+                check_megatron
+                check_infinitrain
+                check_nccl_tests
                 ;;
             *)
                 echo "[WARNING] Unknown dependency type: $dtype"
@@ -140,6 +164,7 @@ main() {
 
     # Display environment
     echo "Environment: INFINI_ROOT=$INFINI_ROOT"
+    echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-not set}"
     echo ""
 
     # Run tests
